@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f5eff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>근태 일괄 대조</title>
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #ffffff; --text: #1b1f27; --muted: #6b7280; --line: #e3e7ee;
+    --primary: #1f5eff; --primary-text: #ffffff;
+    --ok: #15803d; --ok-bg: #e8f7ee; --bad: #c62828; --bad-bg: #fdecec; --warn: #a15c00; --warn-bg: #fff4e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --card: #1b1f26; --text: #e8eaee; --muted: #9aa3af; --line: #2c323c;
+      --primary: #4d7dff; --ok: #4ade80; --ok-bg: #12301f; --bad: #f87171; --bad-bg: #3a1717; --warn: #fbbf24; --warn-bg: #3a2c0f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
+  body { min-height: 100dvh; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; }
+  .icon-btn { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px;
+    padding: 8px 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px 120px; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .step-title { font-size: 24px; font-weight: 800; margin: 8px 0 6px; }
+  .step-desc { color: var(--muted); margin: 0 0 18px; line-height: 1.5; font-size: 15px; }
+  .btn-row { display: flex; gap: 10px; }
+  .big-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    min-height: 130px; border: 0; border-radius: 18px; background: var(--primary); color: var(--primary-text);
+    font-size: 17px; font-weight: 800; cursor: pointer; text-align: center; }
+  .big-btn.alt { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+  .big-btn svg { width: 40px; height: 40px; }
+  .wide-btn { display: block; width: 100%; padding: 17px; border-radius: 14px; border: 0; background: var(--primary);
+    color: var(--primary-text); font-size: 18px; font-weight: 800; cursor: pointer; }
+  .wide-btn:disabled { opacity: .4; }
+  .sub-btn { display: block; width: 100%; margin-top: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 15px; font-weight: 600; text-align: center; cursor: pointer; }
+  input[type=file] { display: none; }
+  .bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: var(--bg); border-top: 1px solid var(--line); }
+  .bottom-bar > * { max-width: 608px; margin: 0 auto; }
+  .count { margin: 20px 0 10px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+  .count button { font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+  .ph { position: relative; aspect-ratio: 3/4; border-radius: 10px; overflow: hidden; background: var(--line); }
+  .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ph .x { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%; border: 0;
+    background: rgba(0,0,0,.6); color: #fff; font-size: 15px; line-height: 26px; padding: 0; cursor: pointer; }
+  .ph .st { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 4px; font-size: 11px; font-weight: 700; text-align: center;
+    background: rgba(0,0,0,.6); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph .st.err { background: var(--bad); }
+  .progress { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; margin: 16px 0 8px; }
+  .progress div { height: 100%; background: var(--primary); width: 0; transition: width .3s; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stats div { text-align: center; padding: 10px 2px; border-radius: 10px; background: var(--bg); font-size: 12px; color: var(--muted); }
+  .stats b { display: block; font-size: 22px; color: var(--text); }
+  .stats .s-ok b { color: var(--ok); } .stats .s-bad b { color: var(--bad); } .stats .s-warn b { color: var(--warn); }
+  .tabs { display: flex; gap: 8px; margin: 16px 0 10px; }
+  .tabs button { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-weight: 700; cursor: pointer; }
+  .tabs button.on { background: var(--text); color: var(--bg); }
+  .emp { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 8px; overflow: hidden; }
+  .emp > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px; cursor: pointer; }
+  .emp > summary::-webkit-details-marker { display: none; }
+  .emp .nm { flex: 1; font-weight: 800; font-size: 16px; }
+  .emp .nm small { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 6px; }
+  .emp .body { padding: 0 14px 14px; }
+  .badge { padding: 5px 9px; border-radius: 8px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.bad { background: var(--bad); color: #fff; }
+  .badge.warn { background: var(--warn); color: #fff; }
+  .badge.miss { background: var(--line); color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 6px; }
+  th, td { padding: 7px 3px; border-bottom: 1px solid var(--line); text-align: center; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.day { font-weight: 700; width: 42px; }
+  tr.bad td { background: var(--bad-bg); }
+  tr.warn td { background: var(--warn-bg); }
+  .tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.bad { background: var(--bad); color: #fff; }
+  .tag.warn { background: var(--warn); color: #fff; }
+  .reason { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .note { font-size: 13px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
+  .warn-note { font-size: 14px; color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+  details.all summary { cursor: pointer; font-weight: 700; padding: 10px 0 4px; font-size: 14px; }
+  .thumbs { display: flex; gap: 8px; margin-top: 12px; }
+  .thumbs figure { margin: 0; flex: 1; }
+  .thumbs img { width: 100%; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; }
+  .thumbs figcaption { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .field { width: 100%; padding: 14px; font-size: 15px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .viewer { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.92); display: none; overflow: auto; }
+  .viewer.open { display: block; }
+  .viewer img { width: 200%; max-width: none; display: block; }
+  .viewer button { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: 12px; }
+  .empty { text-align: center; color: var(--muted); padding: 30px 0; }
+</style>
+</head>
+<body>
+<header>
+  <button class="icon-btn" id="btnSettings">⚙︎ 설정</button>
+  <h1>근태 일괄 대조</h1>
+  <button class="icon-btn" id="btnRestart">↺ 다시 시작</button>
+</header>
+
+<main>
+  <!-- 설정 -->
+  <section class="screen" id="scrSettings">
+    <p class="step-title">Claude API 키</p>
+    <p class="step-desc">처음 한 번만 입력하면 이 폰에만 저장됩니다.</p>
+    <input class="field" id="keyInput" type="password" autocomplete="off" placeholder="sk-ant-...">
+    <button class="wide-btn" id="btnSaveKey" style="margin-top:12px">저장</button>
+    <p class="note" id="keyNote"></p>
+  </section>
+
+  <!-- 1. 사진 모으기 -->
+  <section class="screen" id="scrUpload">
+    <p class="step-title">사진 모으기</p>
+    <p class="step-desc">전산 화면과 출근부를 순서 상관없이 모두 올리세요.<br>AI가 사번·이름으로 알아서 짝을 맞춥니다.</p>
+    <div class="btn-row">
+      <label class="big-btn" for="inCam">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        촬영해서 추가
+      </label>
+      <label class="big-btn alt" for="inFiles">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        앨범에서 여러 장
+      </label>
+    </div>
+    <input type="file" id="inCam" accept="image/*" capture="environment">
+    <input type="file" id="inFiles" accept="image/*" multiple>
+    <div class="count"><span id="photoCount">사진 0장</span><button class="icon-btn" id="btnClear" hidden>모두 지우기</button></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- 2. 인식 중 -->
+  <section class="screen" id="scrWork">
+    <p class="step-title">AI가 읽는 중…</p>
+    <p class="step-desc" id="workDesc"></p>
+    <div class="progress"><div id="bar"></div></div>
+    <p class="note" id="workNote">화면을 끄거나 다른 앱으로 나가지 마세요.</p>
+    <div class="grid" id="workGrid" style="margin-top:16px"></div>
+  </section>
+
+  <!-- 3. 결과 -->
+  <section class="screen" id="scrResult">
+    <div id="resultArea"></div>
+  </section>
+</main>
+
+<div class="bottom-bar" id="bottomBar" hidden><button class="wide-btn" id="btnStart">대조 시작</button></div>
+<div class="viewer" id="viewer"><button class="icon-btn" id="btnCloseViewer">닫기</button><img id="viewerImg" alt=""></div>
+
+<script>
+const MODEL = 'claude-opus-5';
+const KEY_STORE = 'claudeKey';       // 개인 버전(index.html)과 같은 키 공유
+const CONCURRENCY = 4;               // 동시에 보내는 사진 수
+
+const PROMPT = `너는 근태 서류 사진을 읽는 OCR 도우미다. 사진은 아래 둘 중 하나다.
+(A) kind='전산': 모니터의 '인사일근태수정등록' 화면을 폰으로 찍은 것
+(B) kind='출근부': 종이 '파트사원 출근부'(손글씨)
+둘 다 아니면 kind='기타', days는 빈 배열.
+
+[전산 규칙]
+- 상단의 '사번' 칸 숫자(employee_id)와 그 옆 이름(name), '근태월'(YYYY-MM)을 읽는다.
+- 왼쪽 표(1~15일)와 오른쪽 표(16일~)가 있다. 화면에 행이 실제로 있는 날짜만 모두 읽는다. 행이 없는 날짜는 절대 만들지 마라.
+- status는 두 번째 '확정근태' 드롭다운 칸의 글자로 판단: '근무'→근무, '주휴'/'주휴일'/'휴무'/'휴무일'→휴무, '휴일'→휴일, '연차'→연차, 그 외→기타.
+- start/end는 '시업'/'종업' 칸 시각을 HH:MM(24시간, 두 자리)으로. status가 근무가 아니면 null.
+
+[출근부 규칙]
+- 오른쪽 위 '사원번호' 칸 숫자(employee_id)와 '성명' 칸 이름(name), 제목의 연월(YYYY-MM)을 읽는다.
+- 표는 왼쪽(1~16일)과 오른쪽(17~31일)으로 나뉜다. '출근시간','퇴근시간' 칸만 읽는다. 근무시간/공제/확인(서명) 칸, 형광펜, 빨간 가로줄, 오른쪽 여백 메모(예: '1시간 연장')는 무시.
+- 출근시간 칸에 글자(주로 동그라미)가 있으면: '휴무'→휴무, '연차'→연차, '추석'/'설'/'휴일'/'휴일대체'/'대체휴일'→휴일, 그 외→기타. 이때 start/end는 null. 옆의 ①② 번호나 날짜 메모는 무시.
+- 시각이 있으면 status=근무, start/end를 HH:MM(24시간, 두 자리)으로. '8:00'은 '08:00'.
+- 아무것도 안 적힌 날은 status=빈칸.
+
+[공통]
+- raw에는 칸 내용을 그대로 짧게 적는다.
+- 글자가 흐리거나 애매하면(예: 21:30인지 21:20인지) 가장 그럴듯한 값을 넣고 uncertain=true.`;
+
+const SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['kind', 'employee_id', 'name', 'year_month', 'days'],
+  properties: {
+    kind: { type: 'string', enum: ['전산', '출근부', '기타'] },
+    employee_id: { type: ['string', 'null'] },
+    name: { type: ['string', 'null'] },
+    year_month: { type: ['string', 'null'], description: 'YYYY-MM' },
+    days: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['day', 'status', 'start', 'end', 'raw', 'uncertain'],
+        properties: {
+          day: { type: 'integer' },
+          status: { type: 'string', enum: ['근무', '휴무', '휴일', '연차', '기타', '빈칸'] },
+          start: { type: ['string', 'null'] },
+          end: { type: ['string', 'null'] },
+          raw: { type: 'string' },
+          uncertain: { type: 'boolean' }
+        }
+      }
+    }
+  }
+};
+
+const $ = id => document.getElementById(id);
+// photos: { id, dataUrl, b64, thumb, status: 'pending'|'working'|'done'|'error', data, error }
+let photos = [];
+let nextId = 1;
+let run = 0;
+let filter = 'issues';
+
+function getKey() { try { return localStorage.getItem(KEY_STORE) || ''; } catch { return ''; } }
+function setKey(k) { try { localStorage.setItem(KEY_STORE, k); } catch {} }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  $('bottomBar').hidden = id !== 'scrUpload';
+  window.scrollTo(0, 0);
+}
+
+function restart() {
+  run++;
+  photos = [];
+  $('inCam').value = ''; $('inFiles').value = '';
+  renderGrid();
+  show(getKey() ? 'scrUpload' : 'scrSettings');
+}
+
+// ---------- 사진 처리 ----------
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const draw = max => {
+        const s = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        return c;
+      };
+      const dataUrl = draw(2048).toDataURL('image/jpeg', 0.9);
+      const thumb = draw(240).toDataURL('image/jpeg', 0.7);
+      URL.revokeObjectURL(url);
+      resolve({ dataUrl, b64: dataUrl.split(',')[1], thumb });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('사진을 열 수 없습니다: ' + file.name)); };
+    img.src = url;
+  });
+}
+
+async function addFiles(files) {
+  for (const f of files) {
+    try { photos.push({ id: nextId++, status: 'pending', ...(await loadImage(f)) }); }
+    catch (e) { alert(e.message); }
+    renderGrid();
+  }
+}
+
+function statusLabel(p) {
+  if (p.status === 'working') return '읽는 중…';
+  if (p.status === 'error') return '실패';
+  if (p.status === 'done') return p.data.kind === '기타' ? '인식 불가' : `${p.data.kind} · ${p.data.name || p.data.employee_id || '?'}`;
+  return '';
+}
+
+function tile(p, removable) {
+  const lbl = statusLabel(p);
+  return `<div class="ph"><img src="${p.thumb}" data-full="${p.id}" alt="">
+    ${removable ? `<button class="x" data-del="${p.id}" aria-label="삭제">×</button>` : ''}
+    ${lbl ? `<div class="st ${p.status === 'error' || p.data?.kind === '기타' ? 'err' : ''}">${esc(lbl)}</div>` : ''}</div>`;
+}
+
+function renderGrid() {
+  $('grid').innerHTML = photos.map(p => tile(p, true)).join('');
+  const pending = photos.filter(p => p.status !== 'done').length;
+  $('photoCount').textContent = `사진 ${photos.length}장` + (photos.length && pending < photos.length ? ` (새 사진 ${pending}장)` : '');
+  $('btnClear').hidden = !photos.length;
+  $('btnStart').disabled = !photos.length;
+  $('btnStart').textContent = photos.length && pending === 0 ? '결과 보기' : `대조 시작 (${pending}장 읽기)`;
+}
+
+// ---------- AI 호출 ----------
+async function ocr(b64) {
+  const request = JSON.stringify({
+    model: MODEL,
+    max_tokens: 16000,
+    fallbacks: 'default',
+    system: PROMPT,
+    output_config: { format: { type: 'json_schema', schema: SCHEMA } },
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+      { type: 'text', text: '이 사진의 근태 표를 읽어 주세요.' }
+    ] }]
+  });
+  // 사용량 제한(429)·서버 과부하(5xx)는 기다렸다가 자동 재시도
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': getKey(),
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'server-side-fallback-2026-07-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: request
+      });
+    } catch (e) {
+      if (attempt < 5) { await sleep(3000 * (attempt + 1)); continue; }
+      throw new Error('인터넷 연결 오류');
+    }
+    const body = await res.json().catch(() => ({}));
+    if ((res.status === 429 || res.status >= 500) && attempt < 8) {
+      const wait = Number(res.headers.get('retry-after')) || 10 * (attempt + 1);
+      await sleep(wait * 1000);
+      continue;
+    }
+    if (res.status === 401) throw new Error('API 키가 올바르지 않습니다. ⚙︎ 설정에서 다시 입력하세요.');
+    if (!res.ok) throw new Error(body.error?.message || `API 오류 (${res.status})`);
+    if (body.stop_reason === 'refusal') throw new Error('AI가 처리를 거절함');
+    if (body.stop_reason === 'max_tokens') throw new Error('응답이 잘림');
+    const text = (body.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    return JSON.parse(text);
+  }
+}
+
+async function processAll() {
+  const myRun = run;
+  const todo = photos.filter(p => p.status !== 'done');
+  const total = todo.length;
+  let finished = 0, fatal = null;
+  show('scrWork');
+  const update = () => {
+    $('workDesc').textContent = `${total}장 중 ${finished}장 완료`;
+    $('bar').style.width = `${total ? finished / total * 100 : 100}%`;
+    $('workGrid').innerHTML = photos.map(p => tile(p, false)).join('');
+  };
+  update();
+  const queue = [...todo];
+  const worker = async () => {
+    while (queue.length && !fatal && myRun === run) {
+      const p = queue.shift();
+      p.status = 'working'; update();
+      try { p.data = await ocr(p.b64); p.status = 'done'; }
+      catch (e) {
+        p.status = 'error'; p.error = e.message;
+        if (/API 키/.test(e.message)) fatal = e;
+      }
+      finished++;
+      if (myRun === run) update();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, worker));
+  if (myRun !== run) return;
+  if (fatal) { photos.forEach(p => { if (p.status === 'working') p.status = 'pending'; }); alert(fatal.message); show('scrSettings'); return; }
+  renderResult();
+}
+
+// ---------- 짝 맞추기 & 비교 ----------
+function normTime(t) {
+  if (!t) return null;
+  const m = String(t).match(/(\d{1,2})\s*[:;.]\s*(\d{1,2})/);
+  return m ? `${m[1].padStart(2, '0')}:${m[2].padStart(2, '0')}` : String(t).trim();
+}
+const normId = s => (s || '').replace(/\D/g, '');
+const normName = s => (s || '').replace(/\s/g, '');
+
+function describe(d) {
+  if (!d || d.status === '빈칸') return '(빈칸)';
+  if (d.status === '근무') return `${normTime(d.start) || '?'}~${normTime(d.end) || '?'}`;
+  return d.status === '기타' ? (d.raw || '기타') : d.status;
+}
+
+function compare(erp, paper) {
+  const eDays = new Map(erp.days.map(d => [d.day, d]));
+  const pDays = new Map(paper.days.map(d => [d.day, d]));
+  const lastDay = Math.max(0, ...eDays.keys());
+  const rows = [];
+  for (let day = 1; day <= lastDay; day++) {
+    const e = eDays.get(day), p = pDays.get(day);
+    let result = 'ok', reason = '';
+    if (!e) { result = 'warn'; reason = '전산 인식 안 됨'; }
+    else if (!p || p.status === '빈칸') { result = 'bad'; reason = '출근부 빈칸'; }
+    else if (e.status === '근무' && p.status === '근무') {
+      const diffs = [];
+      if (normTime(e.start) !== normTime(p.start)) diffs.push('출근');
+      if (normTime(e.end) !== normTime(p.end)) diffs.push('퇴근');
+      if (diffs.length) { result = 'bad'; reason = `${diffs.join('·')}시간 다름`; }
+    }
+    else if (e.status !== p.status) {
+      const rest = ['휴무', '휴일'];
+      if (rest.includes(e.status) && rest.includes(p.status)) { result = 'warn'; reason = '쉬는 날 종류 다름'; }
+      else { result = 'bad'; reason = '근무 구분 다름'; }
+    }
+    // AI가 글씨를 확신하지 못한 칸은 오독일 수 있으니 '확인'으로 낮춰서 표시
+    if (result === 'bad' && (e?.uncertain || p?.uncertain)) { result = 'warn'; reason += ' · 글씨 불명확, 사진 확인'; }
+    rows.push({ day, e, p, result, reason });
+  }
+  const extra = paper.days.filter(d => d.day > lastDay && d.status !== '빈칸').map(d => d.day);
+  return { rows, lastDay, extra };
+}
+
+// 사번으로 묶고, 사번이 없으면 이름으로 묶는다
+function groupEmployees() {
+  const done = photos.filter(p => p.status === 'done' && p.data.kind !== '기타');
+  const groups = [];
+  const find = d => {
+    const id = normId(d.employee_id), nm = normName(d.name);
+    return groups.find(g => (id && g.ids.has(id)) || (!id && nm && g.names.has(nm)))
+        || (nm && groups.find(g => g.names.has(nm) && !(id && g.ids.size)));
+  };
+  for (const p of done) {
+    let g = find(p.data);
+    if (!g) { g = { ids: new Set(), names: new Set(), erp: [], paper: [] }; groups.push(g); }
+    if (normId(p.data.employee_id)) g.ids.add(normId(p.data.employee_id));
+    if (normName(p.data.name)) g.names.add(normName(p.data.name));
+    (p.data.kind === '전산' ? g.erp : g.paper).push(p);
+  }
+  return groups.map(g => {
+    const erp = g.erp[g.erp.length - 1], paper = g.paper[g.paper.length - 1];
+    const name = erp?.data.name || paper?.data.name || '이름 미인식';
+    const id = erp?.data.employee_id || paper?.data.employee_id || '';
+    const warnings = [];
+    if (g.erp.length > 1) warnings.push(`전산 사진이 ${g.erp.length}장입니다. 마지막 사진으로 비교했습니다.`);
+    if (g.paper.length > 1) warnings.push(`출근부 사진이 ${g.paper.length}장입니다. 마지막 사진으로 비교했습니다.`);
+    if (erp && paper && erp.data.year_month && paper.data.year_month && erp.data.year_month !== paper.data.year_month)
+      warnings.push(`연월이 다릅니다 (전산 ${esc(erp.data.year_month)} / 출근부 ${esc(paper.data.year_month)}).`);
+    if (erp && paper && normName(erp.data.name) && normName(paper.data.name) && normName(erp.data.name) !== normName(paper.data.name))
+      warnings.push(`이름이 다르게 인식됐습니다 (전산 ${esc(erp.data.name)} / 출근부 ${esc(paper.data.name)}).`);
+    let cmp = null, level;
+    if (!erp) level = 'miss-erp';
+    else if (!paper) level = 'miss-paper';
+    else {
+      cmp = compare(erp.data, paper.data);
+      level = cmp.rows.some(r => r.result === 'bad') ? 'bad' : cmp.rows.some(r => r.result === 'warn') || warnings.length ? 'warn' : 'ok';
+    }
+    return { name, id, erp, paper, cmp, level, warnings };
+  });
+}
+
+// ---------- 결과 화면 ----------
+const ORDER = { bad: 0, warn: 1, 'miss-erp': 2, 'miss-paper': 2, ok: 3 };
+
+function badge(emp) {
+  if (emp.level === 'miss-erp') return '<span class="badge miss">전산 사진 없음</span>';
+  if (emp.level === 'miss-paper') return '<span class="badge miss">출근부 사진 없음</span>';
+  const bad = emp.cmp.rows.filter(r => r.result === 'bad').length, warn = emp.cmp.rows.filter(r => r.result === 'warn').length;
+  if (bad) return `<span class="badge bad">불일치 ${bad}</span>`;
+  if (warn) return `<span class="badge warn">확인 ${warn}</span>`;
+  if (emp.level === 'warn') return '<span class="badge warn">확인</span>';
+  return '<span class="badge ok">일치 ✓</span>';
+}
+
+function empBody(emp) {
+  const rowHtml = r => `<tr class="${r.result === 'ok' ? '' : r.result}">
+      <td class="day">${r.day}일</td><td>${esc(describe(r.e))}</td><td>${esc(describe(r.p))}</td>
+      <td><span class="tag ${r.result}">${r.result === 'ok' ? '일치' : r.result === 'bad' ? '불일치' : '확인'}</span>${r.reason ? `<span class="reason">${esc(r.reason)}</span>` : ''}</td></tr>`;
+  const table = list => `<table><thead><tr><th>날짜</th><th>전산</th><th>출근부</th><th>결과</th></tr></thead><tbody>${list.map(rowHtml).join('')}</tbody></table>`;
+  let html = emp.warnings.map(w => `<div class="warn-note">${w}</div>`).join('');
+  if (emp.cmp) {
+    const issues = emp.cmp.rows.filter(r => r.result !== 'ok');
+    if (issues.length) html += table(issues);
+    html += `<details class="all"><summary>전체 날짜 보기 (${emp.cmp.rows.length}일)</summary>${table(emp.cmp.rows)}</details>`;
+    html += `<p class="note">1일~${emp.cmp.lastDay}일 비교${emp.cmp.extra.length ? ` · 출근부 ${emp.cmp.extra.join(', ')}일은 전산에 아직 없어 제외` : ''}</p>`;
+  } else {
+    html += `<p class="note">${emp.erp ? '이 직원의 출근부' : '이 직원의 전산 화면'} 사진을 추가하면 비교합니다.</p>`;
+  }
+  html += `<div class="thumbs">
+    ${emp.erp ? `<figure><img src="${emp.erp.thumb}" data-full="${emp.erp.id}" alt=""><figcaption>전산 사진</figcaption></figure>` : '<figure></figure>'}
+    ${emp.paper ? `<figure><img src="${emp.paper.thumb}" data-full="${emp.paper.id}" alt=""><figcaption>출근부 사진</figcaption></figure>` : '<figure></figure>'}
+  </div>`;
+  return html;
+}
+
+function renderResult() {
+  const emps = groupEmployees().sort((a, b) => ORDER[a.level] - ORDER[b.level] || a.name.localeCompare(b.name, 'ko'));
+  const cnt = k => emps.filter(e => k.includes(e.level)).length;
+  const failed = photos.filter(p => p.status === 'error' || p.status === 'pending');
+  const unknown = photos.filter(p => p.status === 'done' && p.data.kind === '기타');
+  const shown = filter === 'all' ? emps : emps.filter(e => e.level !== 'ok');
+
+  $('resultArea').innerHTML = `
+    <p class="step-title">대조 결과 · ${emps.length}명</p>
+    <div class="card">
+      <div class="stats">
+        <div class="s-ok"><b>${cnt(['ok'])}</b>일치</div>
+        <div class="s-bad"><b>${cnt(['bad'])}</b>불일치</div>
+        <div class="s-warn"><b>${cnt(['warn'])}</b>확인</div>
+        <div><b>${cnt(['miss-erp', 'miss-paper'])}</b>짝 없음</div>
+      </div>
+      ${failed.length ? `<div class="warn-note">사진 ${failed.length}장을 읽지 못했습니다. <button class="icon-btn" id="btnRetry" style="margin-left:6px">다시 시도</button></div>` : ''}
+      ${unknown.length ? `<div class="warn-note">전산/출근부가 아닌 사진 ${unknown.length}장은 제외했습니다.</div>` : ''}
+    </div>
+    <div class="tabs">
+      <button data-filter="issues" class="${filter === 'issues' ? 'on' : ''}">문제만 (${emps.length - cnt(['ok'])})</button>
+      <button data-filter="all" class="${filter === 'all' ? 'on' : ''}">전체 (${emps.length})</button>
+    </div>
+    ${shown.length ? shown.map(e => `<details class="emp">
+        <summary><span class="nm">${esc(e.name)}<small>${esc(e.id)}</small></span>${badge(e)}</summary>
+        <div class="body">${empBody(e)}</div></details>`).join('')
+      : `<div class="empty">${emps.length ? '모든 직원이 일치합니다 ✓' : '인식된 직원이 없습니다.'}</div>`}
+    <button class="sub-btn" id="btnAddMore">＋ 사진 더 추가하기</button>
+    <button class="sub-btn" id="btnNew">새로 시작</button>`;
+  show('scrResult');
+  $('btnAddMore').onclick = () => { renderGrid(); show('scrUpload'); };
+  $('btnNew').onclick = () => { if (confirm('지금 결과를 지우고 새로 시작할까요?')) restart(); };
+  if ($('btnRetry')) $('btnRetry').onclick = processAll;
+  document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { filter = b.dataset.filter; renderResult(); });
+}
+
+// ---------- 이벤트 ----------
+$('inCam').onchange = async e => { await addFiles([...e.target.files]); e.target.value = ''; };
+$('inFiles').onchange = async e => { await addFiles([...e.target.files]); e.target.value = ''; };
+$('btnStart').onclick = () => { if (photos.every(p => p.status === 'done')) renderResult(); else processAll(); };
+$('btnClear').onclick = () => { if (confirm('올린 사진을 모두 지울까요?')) { photos = []; renderGrid(); } };
+$('btnRestart').onclick = () => { if (!photos.length || confirm('처음부터 다시 시작할까요? 올린 사진과 결과가 지워집니다.')) restart(); };
+$('btnSettings').onclick = () => {
+  $('keyInput').value = '';
+  $('keyNote').textContent = getKey() ? '이미 키가 저장되어 있습니다. 바꾸려면 새 키를 입력하세요.' : '';
+  show('scrSettings');
+};
+$('btnSaveKey').onclick = () => {
+  const k = $('keyInput').value.trim();
+  if (!k) { $('keyNote').textContent = '키를 입력해 주세요.'; return; }
+  setKey(k);
+  renderGrid();
+  show('scrUpload');
+};
+document.addEventListener('click', e => {
+  const del = e.target.closest('[data-del]');
+  if (del) { photos = photos.filter(p => p.id !== +del.dataset.del); renderGrid(); return; }
+  const img = e.target.closest('img[data-full]');
+  if (img) {
+    const p = photos.find(x => x.id === +img.dataset.full);
+    if (p) { $('viewerImg').src = p.dataUrl; $('viewer').classList.add('open'); }
+  }
+});
+$('btnCloseViewer').onclick = () => $('viewer').classList.remove('open');
+
+restart();
+</script>
+</body>
+</html>

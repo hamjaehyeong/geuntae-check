@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f5eff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>근태 대조</title>
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #ffffff; --text: #1b1f27; --muted: #6b7280; --line: #e3e7ee;
+    --primary: #1f5eff; --primary-text: #ffffff;
+    --ok: #15803d; --ok-bg: #e8f7ee; --bad: #c62828; --bad-bg: #fdecec; --warn: #a15c00; --warn-bg: #fff4e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --card: #1b1f26; --text: #e8eaee; --muted: #9aa3af; --line: #2c323c;
+      --primary: #4d7dff; --ok: #4ade80; --ok-bg: #12301f; --bad: #f87171; --bad-bg: #3a1717; --warn: #fbbf24; --warn-bg: #3a2c0f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
+  body { min-height: 100dvh; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; }
+  .icon-btn { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px;
+    padding: 8px 12px; font-size: 14px; font-weight: 600; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .steps { display: flex; gap: 6px; margin-bottom: 18px; }
+  .steps span { flex: 1; height: 5px; border-radius: 3px; background: var(--line); }
+  .steps span.on { background: var(--primary); }
+  .step-title { font-size: 24px; font-weight: 800; margin: 8px 0 6px; }
+  .step-desc { color: var(--muted); margin: 0 0 22px; line-height: 1.5; font-size: 15px; }
+  .big-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; min-height: 210px; border: 0; border-radius: 20px; background: var(--primary); color: var(--primary-text);
+    font-size: 21px; font-weight: 800; cursor: pointer; }
+  .big-btn svg { width: 56px; height: 56px; }
+  .sub-btn { display: block; width: 100%; margin-top: 12px; padding: 15px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 16px; font-weight: 600; text-align: center; cursor: pointer; }
+  input[type=file] { display: none; }
+  .thumb-row { display: flex; gap: 10px; margin-top: 18px; }
+  .thumb-row figure { margin: 0; flex: 1; }
+  .thumb-row img { width: 100%; height: 90px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+  .thumb-row figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .loading { text-align: center; padding: 60px 0; }
+  .spinner { width: 46px; height: 46px; margin: 0 auto 18px; border: 5px solid var(--line); border-top-color: var(--primary);
+    border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+  .who { font-size: 20px; font-weight: 800; }
+  .who small { font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+  .verdict { margin-top: 12px; padding: 14px; border-radius: 12px; font-size: 18px; font-weight: 800; }
+  .verdict.ok { background: var(--ok-bg); color: var(--ok); }
+  .verdict.bad { background: var(--bad-bg); color: var(--bad); }
+  .verdict.warn { background: var(--warn-bg); color: var(--warn); }
+  .stats { display: flex; gap: 8px; margin-top: 12px; }
+  .stats div { flex: 1; text-align: center; padding: 10px 4px; border-radius: 10px; background: var(--bg); font-size: 13px; color: var(--muted); }
+  .stats b { display: block; font-size: 20px; color: var(--text); }
+  .note { font-size: 13px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .warn-note { font-size: 14px; color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: center; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.day { font-weight: 700; width: 44px; }
+  tr.bad td { background: var(--bad-bg); }
+  tr.warn td { background: var(--warn-bg); }
+  .tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.bad { background: var(--bad); color: #fff; }
+  .tag.warn { background: var(--warn); color: #fff; }
+  .reason { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+  details summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+  .field { width: 100%; padding: 14px; font-size: 15px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .err { color: var(--bad); background: var(--bad-bg); padding: 14px; border-radius: 12px; line-height: 1.5; word-break: break-all; }
+  .viewer { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.92); display: none; overflow: auto; }
+  .viewer.open { display: block; }
+  .viewer img { width: 200%; max-width: none; display: block; }
+  .viewer button { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <button class="icon-btn" id="btnSettings" aria-label="설정">⚙︎ 설정</button>
+  <h1>근태 대조</h1>
+  <button class="icon-btn" id="btnRestart">↺ 다시 시작</button>
+</header>
+
+<main>
+  <!-- 설정 (API 키) -->
+  <section class="screen" id="scrSettings">
+    <p class="step-title">Claude API 키</p>
+    <p class="step-desc">처음 한 번만 입력하면 이 폰에만 저장됩니다.</p>
+    <input class="field" id="keyInput" type="password" autocomplete="off" placeholder="sk-ant-...">
+    <button class="sub-btn" id="btnSaveKey" style="background:var(--primary);color:var(--primary-text);border:0">저장</button>
+    <p class="note" id="keyNote"></p>
+  </section>
+
+  <!-- 1. 전산 -->
+  <section class="screen" id="scr1">
+    <div class="steps"><span class="on"></span><span></span><span></span></div>
+    <p class="step-title">1. 전산 화면 찍기</p>
+    <p class="step-desc">근태 전산 화면 전체(이름·사번과 날짜 표)가 나오게 찍어주세요.</p>
+    <label class="big-btn" for="cam1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      전산 화면 촬영
+    </label>
+    <label class="sub-btn" for="file1">사진 불러오기</label>
+    <input type="file" id="cam1" accept="image/*" capture="environment">
+    <input type="file" id="file1" accept="image/*">
+  </section>
+
+  <!-- 2. 출근부 -->
+  <section class="screen" id="scr2">
+    <div class="steps"><span class="on"></span><span class="on"></span><span></span></div>
+    <p class="step-title">2. 출근부 찍기</p>
+    <p class="step-desc">같은 직원의 수기 출근부를 표 전체가 나오게 찍어주세요.</p>
+    <label class="big-btn" for="cam2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      출근부 촬영
+    </label>
+    <label class="sub-btn" for="file2">사진 불러오기</label>
+    <input type="file" id="cam2" accept="image/*" capture="environment">
+    <input type="file" id="file2" accept="image/*">
+    <div class="thumb-row"><figure><img id="thumb1" alt=""><figcaption>전산 화면 · AI 인식 중…</figcaption></figure><figure></figure></div>
+  </section>
+
+  <!-- 3. 결과 -->
+  <section class="screen" id="scr3">
+    <div class="steps"><span class="on"></span><span class="on"></span><span class="on"></span></div>
+    <div id="resultArea"></div>
+  </section>
+</main>
+
+<div class="viewer" id="viewer"><button class="icon-btn" id="btnCloseViewer">닫기</button><img id="viewerImg" alt=""></div>
+
+<script>
+const MODEL = 'claude-opus-5';
+const KEY_STORE = 'claudeKey';
+
+const PROMPT_ERP = `너는 근태 전산 화면 사진을 읽는 OCR 도우미다. 사진은 모니터의 '인사일근태수정등록' 화면을 폰으로 찍은 것이다.
+- 상단의 '사번' 칸 숫자와 그 옆 이름, '근태월'(YYYY/MM)을 읽는다.
+- 화면에 왼쪽 표(1~15일)와 오른쪽 표(16일~)가 있다. 화면에 행이 실제로 있는 날짜만 모두 읽는다. 행이 없는 날짜는 절대 만들지 마라.
+- 각 날짜의 status는 두 번째 '확정근태' 드롭다운 칸의 글자로 판단한다: '근무'→근무, '주휴'/'주휴일'/'휴무'/'휴무일'→휴무, '휴일'→휴일, '연차'→연차, 그 외→기타.
+- start/end는 '시업'/'종업' 칸의 시각을 HH:MM(24시간, 두 자리)으로 적는다. status가 근무가 아니면 start/end는 null.
+- raw에는 확정근태 칸 글자와 시각을 그대로 짧게 적는다.
+- 글자가 흐리거나 확실하지 않으면 uncertain=true.`;
+
+const PROMPT_PAPER = `너는 손으로 쓴 '파트사원 출근부' 사진을 읽는 OCR 도우미다.
+- 사원번호/성명 칸이나 여백에 적힌 사번(숫자)과 이름, 제목의 연월을 읽는다. 없으면 null.
+- 표는 왼쪽(1~16일)과 오른쪽(17~31일)으로 나뉜다. '출근시간','퇴근시간' 칸만 읽는다. 근무시간/공제/확인(서명) 칸, 형광펜, 빨간 가로줄(주 구분선), 오른쪽 여백 메모(예: '1시간 연장')는 무시한다.
+- 출근시간 칸에 글자(주로 동그라미 쳐 있음)가 있으면: '휴무'→휴무, '연차'→연차, '추석'/'설'/'휴일'/'휴일대체'/'대체휴일'→휴일, 그 외 글자→기타. 이때 start/end는 null. 옆의 ①② 같은 번호나 날짜 메모는 무시.
+- 시각이 적혀 있으면 status=근무, start/end를 HH:MM(24시간, 두 자리)으로. 손글씨 '8:00'은 '08:00'.
+- 아무것도 안 적힌 날은 status=빈칸.
+- raw에는 칸에 적힌 내용을 그대로 짧게 적는다.
+- 손글씨가 애매하면(예: 21:30인지 21:20인지) 가장 그럴듯한 값을 넣고 uncertain=true.`;
+
+const SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['employee_id', 'name', 'year_month', 'days'],
+  properties: {
+    employee_id: { type: ['string', 'null'] },
+    name: { type: ['string', 'null'] },
+    year_month: { type: ['string', 'null'], description: 'YYYY-MM' },
+    days: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['day', 'status', 'start', 'end', 'raw', 'uncertain'],
+        properties: {
+          day: { type: 'integer' },
+          status: { type: 'string', enum: ['근무', '휴무', '휴일', '연차', '기타', '빈칸'] },
+          start: { type: ['string', 'null'] },
+          end: { type: ['string', 'null'] },
+          raw: { type: 'string' },
+          uncertain: { type: 'boolean' }
+        }
+      }
+    }
+  }
+};
+
+const $ = id => document.getElementById(id);
+let state = {};
+
+function getKey() { try { return localStorage.getItem(KEY_STORE) || ''; } catch { return ''; } }
+function setKey(k) { try { localStorage.setItem(KEY_STORE, k); } catch {} }
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  window.scrollTo(0, 0);
+}
+
+function restart() {
+  state = { run: (state.run || 0) + 1 };
+  ['cam1', 'file1', 'cam2', 'file2'].forEach(id => { $(id).value = ''; });
+  $('resultArea').innerHTML = '';
+  show(getKey() ? 'scr1' : 'scrSettings');
+}
+
+// 사진 → 긴 변 2048px JPEG(base64)
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 2048 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      const dataUrl = c.toDataURL('image/jpeg', 0.9);
+      resolve({ dataUrl, b64: dataUrl.split(',')[1] });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('사진을 열 수 없습니다.')); };
+    img.src = url;
+  });
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function ocr(b64, prompt) {
+  const request = JSON.stringify({
+    model: MODEL,
+    max_tokens: 16000,
+    fallbacks: 'default',
+    system: prompt,
+    output_config: { format: { type: 'json_schema', schema: SCHEMA } },
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+      { type: 'text', text: '이 사진의 근태 표를 읽어 주세요.' }
+    ] }]
+  });
+  // 과부하(429/5xx)면 잠시 후 자동 재시도
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': getKey(),
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'server-side-fallback-2026-07-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: request
+      });
+    } catch (e) {
+      if (attempt < 3) { await sleep(2000 * (attempt + 1)); continue; }
+      throw new Error('인터넷 연결을 확인해 주세요.');
+    }
+    const body = await res.json().catch(() => ({}));
+    if ((res.status === 429 || res.status >= 500) && attempt < 3) { await sleep(3000 * (attempt + 1)); continue; }
+    if (res.status === 401) throw new Error('API 키가 올바르지 않습니다. ⚙︎ 설정에서 키를 다시 입력하세요.');
+    if (!res.ok) throw new Error(body.error?.message || `API 오류 (${res.status})`);
+    if (body.stop_reason === 'refusal') throw new Error('AI가 이 사진 처리를 거절했습니다. 다시 찍어 주세요.');
+    if (body.stop_reason === 'max_tokens') throw new Error('AI 응답이 잘렸습니다. 다시 시도해 주세요.');
+    const text = (body.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    if (!text) throw new Error('AI 응답이 비어 있습니다. 사진을 다시 찍어 주세요.');
+    return JSON.parse(text);
+  }
+}
+
+function normTime(t) {
+  if (!t) return null;
+  const m = String(t).match(/(\d{1,2})\s*[:;.]\s*(\d{1,2})/);
+  if (!m) return String(t).trim();
+  return `${m[1].padStart(2, '0')}:${m[2].padStart(2, '0')}`;
+}
+
+function describe(d) {
+  if (!d || d.status === '빈칸') return '(빈칸)';
+  if (d.status === '근무') return `${normTime(d.start) || '?'}~${normTime(d.end) || '?'}`;
+  return d.status === '기타' ? (d.raw || '기타') : d.status;
+}
+
+function compare(erp, paper) {
+  const eDays = new Map(erp.days.map(d => [d.day, d]));
+  const pDays = new Map(paper.days.map(d => [d.day, d]));
+  const lastDay = Math.max(0, ...eDays.keys());
+  const rows = [];
+  for (let day = 1; day <= lastDay; day++) {
+    const e = eDays.get(day), p = pDays.get(day);
+    let result = 'ok', reason = '';
+    if (!e) { result = 'warn'; reason = '전산 인식 안 됨'; }
+    else if (!p || p.status === '빈칸') { result = 'bad'; reason = '출근부 빈칸'; }
+    else if (e.status === '근무' && p.status === '근무') {
+      const diffs = [];
+      if (normTime(e.start) !== normTime(p.start)) diffs.push('출근');
+      if (normTime(e.end) !== normTime(p.end)) diffs.push('퇴근');
+      if (diffs.length) { result = 'bad'; reason = `${diffs.join('·')}시간 다름`; }
+    }
+    else if (e.status !== p.status) {
+      const rest = ['휴무', '휴일'];
+      if (rest.includes(e.status) && rest.includes(p.status)) { result = 'warn'; reason = '쉬는 날 종류 다름'; }
+      else { result = 'bad'; reason = '근무 구분 다름'; }
+    }
+    // AI가 글씨를 확신하지 못한 칸은 오독일 수 있으니 '확인'으로 낮춰서 표시
+    if (result === 'bad' && (e?.uncertain || p?.uncertain)) { result = 'warn'; reason += ' · 글씨 불명확, 사진 확인'; }
+    rows.push({ day, e, p, result, reason });
+  }
+  const extra = paper.days.filter(d => d.day > lastDay && d.status !== '빈칸').map(d => d.day);
+  return { rows, lastDay, extra };
+}
+
+// 손글씨 사번은 한 글자 정도 잘못 읽힐 수 있어 편집거리로 비교
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return dp[a.length][b.length];
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function renderResult(erp, paper) {
+  const { rows, lastDay, extra } = compare(erp, paper);
+  const bad = rows.filter(r => r.result === 'bad'), warn = rows.filter(r => r.result === 'warn');
+  const ok = rows.length - bad.length - warn.length;
+  const cls = bad.length ? 'bad' : warn.length ? 'warn' : 'ok';
+  const verdict = bad.length ? `불일치 ${bad.length}건` : warn.length ? `확인 필요 ${warn.length}건` : `모두 일치 ✓`;
+
+  const warnings = [];
+  const eid = (erp.employee_id || '').replace(/\D/g, ''), pid = (paper.employee_id || '').replace(/\D/g, '');
+  if (eid && pid && editDistance(eid, pid) > 1) warnings.push(`사번이 다릅니다 (전산 ${esc(erp.employee_id)} / 출근부 ${esc(paper.employee_id)}). 같은 직원 서류인지 확인하세요.`);
+  else if (erp.name && paper.name && erp.name.replace(/\s/g, '') !== paper.name.replace(/\s/g, ''))
+    warnings.push(`이름이 다르게 인식됐습니다 (전산 ${esc(erp.name)} / 출근부 ${esc(paper.name)}).`);
+  if (!lastDay) warnings.push('전산 화면에서 날짜 표를 읽지 못했습니다. 다시 찍어 주세요.');
+
+  const rowHtml = r => `<tr class="${r.result === 'ok' ? '' : r.result}">
+      <td class="day">${r.day}일</td>
+      <td>${esc(describe(r.e))}</td>
+      <td>${esc(describe(r.p))}</td>
+      <td><span class="tag ${r.result}">${r.result === 'ok' ? '일치' : r.result === 'bad' ? '불일치' : '확인'}</span>${r.reason ? `<span class="reason">${esc(r.reason)}</span>` : ''}</td>
+    </tr>`;
+  const table = list => `<table><thead><tr><th>날짜</th><th>전산</th><th>출근부</th><th>결과</th></tr></thead><tbody>${list.map(rowHtml).join('')}</tbody></table>`;
+  const issues = rows.filter(r => r.result !== 'ok');
+
+  $('resultArea').innerHTML = `
+    <div class="card">
+      <div class="who">${esc(erp.name || paper.name || '이름 미인식')}<small>${esc(erp.employee_id || '')}</small></div>
+      <div class="verdict ${cls}">${verdict}</div>
+      <div class="stats">
+        <div><b>${ok}</b>일치</div><div><b>${bad.length}</b>불일치</div><div><b>${warn.length}</b>확인</div>
+      </div>
+      ${warnings.map(w => `<div class="warn-note">${w}</div>`).join('')}
+      <p class="note">1일~${lastDay}일 비교 (전산 화면에 보이는 날짜까지)${extra.length ? ` · 출근부 ${extra.join(', ')}일은 비교 제외` : ''}</p>
+    </div>
+    ${issues.length ? `<div class="card"><h2>확인할 날짜</h2>${table(issues)}</div>` : ''}
+    <div class="card">
+      <details ${issues.length ? '' : 'open'}><summary>전체 날짜 보기 (${rows.length}일)</summary>${table(rows)}</details>
+    </div>
+    <div class="thumb-row" style="margin-bottom:14px">
+      <figure><img src="${state.img1.dataUrl}" data-view alt="전산 사진"><figcaption>전산 사진 (눌러서 확대)</figcaption></figure>
+      <figure><img src="${state.img2.dataUrl}" data-view alt="출근부 사진"><figcaption>출근부 사진 (눌러서 확대)</figcaption></figure>
+    </div>
+    <button class="big-btn" style="min-height:64px;font-size:18px" id="btnNext">다음 직원 →</button>`;
+  $('btnNext').onclick = restart;
+}
+
+function renderLoading(msg) {
+  $('resultArea').innerHTML = `<div class="loading"><div class="spinner"></div><p class="step-title" style="font-size:20px">${msg}</p><p class="step-desc">보통 10~30초 걸립니다.</p></div>`;
+}
+
+function renderError(err) {
+  $('resultArea').innerHTML = `<p class="step-title">인식에 실패했어요</p><div class="err">${esc(err.message || err)}</div>
+    <button class="sub-btn" onclick="restart()">처음부터 다시</button>`;
+}
+
+async function onErpPhoto(file) {
+  if (!file) return;
+  const run = state.run;
+  try {
+    state.img1 = await loadImage(file);
+  } catch (e) { alert(e.message); return; }
+  $('thumb1').src = state.img1.dataUrl;
+  state.erpPromise = ocr(state.img1.b64, PROMPT_ERP);   // 출근부 찍는 동안 미리 인식
+  state.erpPromise.catch(() => {});
+  if (run === state.run) show('scr2');
+}
+
+async function onPaperPhoto(file) {
+  if (!file) return;
+  const run = state.run;
+  show('scr3');
+  renderLoading('AI가 읽고 비교하는 중…');
+  try {
+    state.img2 = await loadImage(file);
+    const [erp, paper] = await Promise.all([state.erpPromise, ocr(state.img2.b64, PROMPT_PAPER)]);
+    if (run !== state.run) return;
+    renderResult(erp, paper);
+  } catch (e) {
+    if (run === state.run) renderError(e);
+  }
+}
+
+$('cam1').onchange = e => onErpPhoto(e.target.files[0]);
+$('file1').onchange = e => onErpPhoto(e.target.files[0]);
+$('cam2').onchange = e => onPaperPhoto(e.target.files[0]);
+$('file2').onchange = e => onPaperPhoto(e.target.files[0]);
+$('btnRestart').onclick = restart;
+$('btnSettings').onclick = () => {
+  $('keyInput').value = '';
+  $('keyNote').textContent = getKey() ? '이미 키가 저장되어 있습니다. 바꾸려면 새 키를 입력하세요.' : '';
+  show('scrSettings');
+};
+$('btnSaveKey').onclick = () => {
+  const k = $('keyInput').value.trim();
+  if (!k) { $('keyNote').textContent = '키를 입력해 주세요.'; return; }
+  setKey(k);
+  restart();
+};
+document.addEventListener('click', e => {
+  if (e.target.matches('img[data-view]')) { $('viewerImg').src = e.target.src; $('viewer').classList.add('open'); }
+});
+$('btnCloseViewer').onclick = () => $('viewer').classList.remove('open');
+
+restart();
+</script>
+</body>
+</html>
