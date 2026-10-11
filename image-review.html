@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>이미지 검수대</title>
+<style>
+/* Layout: library rail | inspection stage | verdict panel. The stage owns the screen; chrome stays quiet around it. */
+:root {
+  --bg: #f2f4f8; --surface: #ffffff; --surface-2: #f6f8fb; --fg: #1b1f27; --muted: #657083;
+  --line: #e0e5ee; --line-strong: #c9d1de;
+  --accent: #1f5eff; --accent-fg: #ffffff; --accent-soft: #e5ecff;
+  --pass: #15803d; --pass-bg: #e6f6ec; --fail: #c62828; --fail-bg: #fdecec;
+  --pass-solid: #15803d; --fail-solid: #c62828; --on-solid: #ffffff;
+  --stage-grey: #3b4048; --stage-black: #0c0d10; --stage-white: #ffffff; --checker-a: #c9ced6; --checker-b: #eef0f3;
+  --hud-bg: rgba(18, 20, 24, 0.8); --hud-fg: #eef1f5; --hud-muted: #a7afbd; --hud-line: rgba(255, 255, 255, 0.14);
+  --hud-hover: rgba(255, 255, 255, 0.1); --hud-active: #4d7dff;
+  --pin: #ff3b30; --pin-fg: #ffffff; --pin-ring: #ffffff;
+  --backdrop: rgba(10, 12, 16, 0.55);
+  --shadow: 0 10px 32px rgba(16, 24, 40, 0.16);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --surface: #1a1e25; --surface-2: #151920; --fg: #e8eaee; --muted: #98a2b3;
+    --line: #2a303a; --line-strong: #3a4250;
+    --accent: #5b86ff; --accent-fg: #ffffff; --accent-soft: #1d2a4d;
+    --pass: #4ade80; --pass-bg: #12301f; --fail: #f87171; --fail-bg: #3a1717;
+    --shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --surface: #1a1e25; --surface-2: #151920; --fg: #e8eaee; --muted: #98a2b3;
+  --line: #2a303a; --line-strong: #3a4250;
+  --accent: #5b86ff; --accent-fg: #ffffff; --accent-soft: #1d2a4d;
+  --pass: #4ade80; --pass-bg: #12301f; --fail: #f87171; --fail-bg: #3a1717;
+  --shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font-ui); -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+kbd { font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 0 5px; border-radius: 4px; border: 1px solid currentColor; opacity: 0.6; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ---------- app grid ---------- */
+.app { display: grid; height: 100%; grid-template-columns: 236px minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "top top top" "lib stage panel"; }
+
+/* ---------- top bar ---------- */
+.topbar { grid-area: top; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 20px; padding: 10px 16px;
+  background: var(--surface); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 8px; }
+.brand svg { width: 22px; height: 22px; color: var(--accent); flex: none; }
+.brand h1 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; }
+.progress { flex: 1 1 260px; min-width: 0; max-width: 520px; display: flex; flex-direction: column; gap: 6px; }
+.bar { display: flex; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar span { height: 100%; width: 0; transition: width 0.25s ease; }
+.bar .b-pass { background: var(--pass); }
+.bar .b-fail { background: var(--fail); }
+.counts { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.counts b { color: var(--fg); }
+.counts .c-pass b { color: var(--pass); }
+.counts .c-fail b { color: var(--fail); }
+.actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px;
+  border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg);
+  font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { background: var(--accent); filter: brightness(1.07); }
+.btn.ready { box-shadow: 0 0 0 4px var(--accent-soft); }
+.btn.small { min-height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 7px; }
+.btn.small.on { background: var(--pin); border-color: var(--pin); color: var(--pin-fg); }
+.btn.icon { width: 36px; padding: 0; font-size: 18px; }
+.btn.ghost { border-color: transparent; background: none; }
+.btn.ghost:hover { background: var(--surface-2); }
+
+.menu { position: relative; }
+.menu summary { list-style: none; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 210px; padding: 6px;
+  display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+.menu-pop button { text-align: left; background: none; border: 0; padding: 9px 10px; border-radius: 7px; cursor: pointer; }
+.menu-pop button:hover { background: var(--surface-2); }
+.menu-pop .danger { color: var(--fail); }
+.menu-pop hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
+
+/* ---------- library ---------- */
+.library { grid-area: lib; display: flex; flex-direction: column; min-height: 0; background: var(--surface-2); border-right: 1px solid var(--line); }
+.filters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 10px; border-bottom: 1px solid var(--line); }
+.filters button { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; border: 0; border-radius: 7px;
+  background: none; color: var(--muted); font-size: 11.5px; line-height: 1.2; cursor: pointer; }
+.filters button b { font-size: 15px; color: var(--fg); font-variant-numeric: tabular-nums; }
+.filters button[data-filter="pass"] b { color: var(--pass); }
+.filters button[data-filter="fail"] b { color: var(--fail); }
+.filters button.on { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--fg); font-weight: 600; }
+.thumbs { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px; align-content: start; }
+.thumb { position: relative; min-width: 0; }
+.tsel { display: flex; flex-direction: column; gap: 5px; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
+.tw { position: relative; display: block; aspect-ratio: 1; max-width: 100%; border-radius: 8px; overflow: hidden;
+  background-color: var(--checker-b);
+  background-image: conic-gradient(var(--checker-a) 25%, transparent 0 50%, var(--checker-a) 0 75%, transparent 0);
+  background-size: 12px 12px; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.tw img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: contain; display: block; }
+.thumb[data-status="pass"] .tw { box-shadow: inset 0 0 0 3px var(--pass-solid); }
+.thumb[data-status="fail"] .tw { box-shadow: inset 0 0 0 3px var(--fail-solid); }
+.thumb.sel .tw { outline: 3px solid var(--accent); outline-offset: 2px; }
+.tbadge { position: absolute; left: 5px; top: 5px; padding: 1px 6px; border-radius: 5px; font-size: 10.5px; font-weight: 700; color: var(--on-solid); }
+.tbadge:empty { display: none; }
+.thumb[data-status="pass"] .tbadge { background: var(--pass-solid); }
+.thumb[data-status="fail"] .tbadge { background: var(--fail-solid); }
+.tpins { position: absolute; right: 5px; bottom: 5px; padding: 1px 6px; border-radius: 5px; font-size: 10.5px; font-weight: 700;
+  background: var(--pin); color: var(--pin-fg); }
+.tpins:empty { display: none; }
+.tcap { display: flex; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--muted); }
+.tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.tdel { position: absolute; right: 4px; top: 4px; height: 24px; min-width: 24px; padding: 0 6px; border: 0; border-radius: 6px;
+  background: var(--hud-bg); color: var(--hud-fg); font-size: 14px; line-height: 1; cursor: pointer; opacity: 0; }
+.thumb:hover .tdel, .tdel:focus-visible, .tdel.arm { opacity: 1; }
+.tdel.arm { background: var(--fail-solid); color: var(--on-solid); font-size: 12px; font-weight: 700; }
+@media (hover: none) { .tdel { opacity: 0.85; } }
+.lib-empty { grid-column: 1 / -1; margin: 0; padding: 24px 8px; text-align: center; font-size: 13px; color: var(--muted); }
+.lib-foot { padding: 10px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); line-height: 1.5; }
+.lib-foot.warn { color: var(--fail); }
+
+/* ---------- stage ---------- */
+.stage { grid-area: stage; position: relative; min-width: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+  cursor: grab; background: var(--stage-grey); }
+.stage[data-bg="black"] { background: var(--stage-black); }
+.stage[data-bg="white"] { background: var(--stage-white); }
+.stage[data-bg="checker"] { background-color: var(--checker-b);
+  background-image: conic-gradient(var(--checker-a) 25%, transparent 0 50%, var(--checker-a) 0 75%, transparent 0); background-size: 20px 20px; }
+.stage.panning { cursor: grabbing; }
+.stage.pinmode { cursor: crosshair; }
+.stage.noimg { cursor: default; }
+.stage.noimg .hud, .stage.noimg .stage-nav, .stage.noimg #frame, .stage.noimg #mainImg, .stage.noimg .nav { display: none; }
+#mainImg { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; will-change: transform; pointer-events: none; }
+#mainImg.pixel { image-rendering: pixelated; }
+#frame { position: absolute; pointer-events: none; box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.45); }
+.pins { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.pin { position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  display: grid; place-items: center; border: 2px solid var(--pin-ring); background: var(--pin); color: var(--pin-fg);
+  font: 700 12px/1 var(--font-mono); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); cursor: pointer; pointer-events: auto; }
+.pin.hl { animation: pinPulse 0.9s ease-out 2; }
+@keyframes pinPulse { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.8); } 100% { box-shadow: 0 0 0 16px rgba(255, 59, 48, 0); } }
+
+.hud { position: absolute; z-index: 5; background: var(--hud-bg); color: var(--hud-fg); border-radius: 10px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.hud-top { top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; padding: 4px;
+  max-width: calc(100% - 20px); overflow-x: auto; scrollbar-width: none; }
+.hud-top::-webkit-scrollbar { display: none; }
+.hud-group { display: flex; align-items: center; gap: 2px; padding: 0 4px; flex: none; }
+.hud-group + .hud-group { border-left: 1px solid var(--hud-line); }
+.hb { min-width: 32px; height: 30px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--hud-fg);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.hb:hover { background: var(--hud-hover); }
+.hb.on { background: var(--hud-active); color: #ffffff; }
+.hb.pinbtn.on { background: var(--pin); }
+.zoomval { min-width: 62px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.sw { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border: 2px solid transparent; border-radius: 7px; background: none; cursor: pointer; }
+.sw i { display: block; width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
+.sw.on { border-color: var(--hud-fg); }
+.sw[data-bg="grey"] i { background: var(--stage-grey); }
+.sw[data-bg="black"] i { background: var(--stage-black); }
+.sw[data-bg="white"] i { background: var(--stage-white); }
+.sw[data-bg="checker"] i { background-color: var(--checker-b);
+  background-image: conic-gradient(var(--checker-a) 25%, transparent 0 50%, var(--checker-a) 0 75%, transparent 0); background-size: 7px 7px; }
+.hud-status { left: 10px; bottom: 10px; display: flex; gap: 12px; padding: 5px 10px; font-size: 12px; max-width: calc(100% - 190px); }
+.hud-status span:empty { display: none; }
+.hud-status .dim { color: var(--hud-muted); }
+.stage-nav { position: absolute; top: 50%; z-index: 4; transform: translateY(-50%); width: 40px; height: 64px; border: 0; border-radius: 10px;
+  background: var(--hud-bg); color: var(--hud-fg); font-size: 26px; line-height: 1; cursor: pointer; opacity: 0.5; }
+.stage-nav:hover, .stage-nav:focus-visible { opacity: 1; }
+.stage-nav.prev { left: 10px; }
+.stage-nav.next { right: 10px; }
+.nav { position: absolute; right: 10px; bottom: 10px; z-index: 5; overflow: hidden; border-radius: 6px; background: var(--hud-bg);
+  box-shadow: 0 0 0 1px var(--hud-line), 0 4px 18px rgba(0, 0, 0, 0.4); cursor: pointer; touch-action: none; }
+.nav img { display: block; max-width: none; pointer-events: none; }
+.nav-rect { position: absolute; pointer-events: none; border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 0 999px rgba(0, 0, 0, 0.4); }
+.pin-banner { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); z-index: 5; padding: 6px 12px; border-radius: 999px;
+  background: var(--pin); color: var(--pin-fg); font-size: 12.5px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+
+.empty { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; padding: 24px; background: var(--stage-grey); }
+.empty-card { max-width: 460px; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 36px 28px; text-align: center;
+  color: var(--hud-fg); border: 2px dashed rgba(255, 255, 255, 0.28); border-radius: 18px; }
+.empty-card svg { width: 44px; height: 44px; color: var(--hud-muted); }
+.empty-card h2 { margin: 0; font-size: 20px; text-wrap: balance; }
+.empty-card p { margin: 0; color: var(--hud-muted); line-height: 1.6; font-size: 13.5px; }
+.empty-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.empty-card .btn { border-color: rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.08); color: var(--hud-fg); }
+.empty-card .btn.primary { background: var(--hud-active); border-color: var(--hud-active); color: #ffffff; }
+.empty-card .linkbtn { color: var(--hud-muted); }
+
+/* ---------- verdict panel ---------- */
+.panel { grid-area: panel; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 16px;
+  background: var(--surface); border-left: 1px solid var(--line); }
+.panel-body { display: flex; flex-direction: column; gap: 18px; }
+.panel-empty { padding: 28px 4px; text-align: center; color: var(--muted); }
+.file-idx { font-size: 12px; color: var(--muted); }
+.file-head h2 { margin: 2px 0 4px; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; text-wrap: balance; }
+.file-meta { font-size: 12px; color: var(--muted); }
+.verdict { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.vbtn { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 54px; border-radius: 12px; cursor: pointer;
+  border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--fg); font-size: 16px; font-weight: 800; }
+.vbtn svg { width: 18px; height: 18px; flex: none; }
+.vbtn.pass:hover { border-color: var(--pass); color: var(--pass); }
+.vbtn.fail:hover { border-color: var(--fail); color: var(--fail); }
+.vbtn.pass.on { background: var(--pass-bg); border-color: var(--pass); color: var(--pass); }
+.vbtn.fail.on { background: var(--fail-bg); border-color: var(--fail); color: var(--fail); }
+.verdict-sub { display: flex; align-items: center; justify-content: space-between; margin-top: -8px; font-size: 12.5px; }
+.state-pill { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.state-pill[data-s="pass"] { background: var(--pass-bg); color: var(--pass); border-color: transparent; }
+.state-pill[data-s="fail"] { background: var(--fail-bg); color: var(--fail); border-color: transparent; }
+.linkbtn { padding: 4px; border: 0; background: none; color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.field { display: flex; flex-direction: column; gap: 8px; }
+.label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 0.02em; }
+.label small { font-weight: 500; letter-spacing: 0; }
+.label.row { justify-content: space-between; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); font-size: 12.5px; cursor: pointer; }
+.chip:hover { border-color: var(--fail); }
+.chip[aria-pressed="true"] { background: var(--fail-bg); border-color: var(--fail); color: var(--fail); font-weight: 700; }
+textarea, input[type="text"] { width: 100%; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2);
+  color: var(--fg); line-height: 1.5; resize: vertical; }
+textarea:focus, input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; background: var(--surface); }
+textarea::placeholder, input::placeholder { color: var(--muted); opacity: 0.8; }
+.hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.hint.warn { color: var(--fail); font-weight: 600; }
+.pin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pin-list:empty { display: none; }
+.pin-list li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.pin-no { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: var(--pin); color: var(--pin-fg); font: 700 12px/1 var(--font-mono); cursor: pointer; }
+.coords { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.pin-list input { padding: 6px 8px; font-size: 13px; border-radius: 7px; }
+.pin-del { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 16px; cursor: pointer; }
+.pin-del:hover { background: var(--fail-bg); color: var(--fail); }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.panel-nav { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 6px; }
+.panel-nav .btn { padding: 0 6px; font-size: 13px; }
+.keys { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+.keys summary { cursor: pointer; font-weight: 700; }
+.keys dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin: 10px 0 0; }
+.keys dt { font-family: var(--font-mono); color: var(--fg); white-space: nowrap; }
+.keys dd { margin: 0; }
+
+/* ---------- dialogs, toast, drop ---------- */
+dialog.dlg { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 0; border-radius: 16px;
+  background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+dialog.dlg.wide { width: min(1060px, calc(100vw - 32px)); }
+dialog::backdrop { background: var(--backdrop); }
+.dlg-inner { display: flex; flex-direction: column; gap: 14px; padding: 18px; max-height: calc(100vh - 32px); }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dlg-head h3 { margin: 0; font-size: 17px; }
+.dlg-inner p { margin: 0; line-height: 1.6; color: var(--muted); }
+.ex-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 0; }
+.ex-opts { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.seg { display: flex; border: 1px solid var(--line-strong); border-radius: 9px; overflow: hidden; }
+.seg label { position: relative; flex: 1; text-align: center; }
+.seg label + label { border-left: 1px solid var(--line-strong); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; padding: 7px 6px; font-size: 13px; cursor: pointer; }
+.seg input:checked + span { background: var(--accent); color: var(--accent-fg); font-weight: 700; }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+#exText { height: min(58vh, 520px); font: 12.5px/1.55 var(--font-mono); white-space: pre-wrap; resize: none; }
+.warn-box { padding: 10px 12px; border-radius: 10px; background: var(--fail-bg); color: var(--fail); font-size: 13px; line-height: 1.5; }
+.dlg-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.dlg-foot .hint { margin-right: auto; }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 100; transform: translateX(-50%);
+  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 10px; background: var(--fg); color: var(--bg);
+  font-size: 13.5px; font-weight: 600; box-shadow: var(--shadow); }
+.drop-overlay { position: fixed; inset: 10px; z-index: 90; display: grid; place-items: center; pointer-events: none;
+  border: 3px dashed var(--accent); border-radius: 18px; background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--fg); font-size: 20px; font-weight: 800; }
+.drop-overlay span { padding: 12px 20px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bar span { transition: none; }
+  .pin.hl { animation: none; }
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1180px) {
+  .app { grid-template-columns: 200px minmax(0, 1fr) 300px; }
+}
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto;
+    grid-template-areas: "top" "stage" "lib" "panel"; }
+  .stage { height: 62vh; min-height: 320px; }
+  .library { border-right: 0; border-bottom: 1px solid var(--line); }
+  .thumbs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 84px; overflow-x: auto; overflow-y: hidden; }
+  .lib-foot { display: none; }
+  .panel { border-left: 0; overflow: visible; }
+  .actions { width: 100%; margin-left: 0; }
+  .actions > .btn { flex: 1; }
+  .hud-status { max-width: calc(100% - 20px); bottom: auto; top: 54px; }
+  .pin-banner { top: 90px; }
+  .ex-grid { grid-template-columns: minmax(0, 1fr); }
+  #exText { height: 40vh; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/><path d="m8 10.5 2 2 3.5-4"/></svg>
+      <h1>이미지 검수대</h1>
+    </div>
+    <div class="progress" aria-live="polite">
+      <div class="bar" aria-hidden="true"><span class="b-pass" id="barPass"></span><span class="b-fail" id="barFail"></span></div>
+      <div class="counts">
+        <span id="cntDone">0 / 0 검수</span>
+        <span class="c-pass">통과 <b id="cntPass">0</b></span>
+        <span class="c-fail">불통과 <b id="cntFail">0</b></span>
+        <span>미검수 <b id="cntPend">0</b></span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnAdd" type="button">이미지 추가</button>
+      <button class="btn primary" id="btnExport" type="button">결과 내보내기</button>
+      <details class="menu" id="menu">
+        <summary class="btn icon" aria-label="더보기">⋯</summary>
+        <div class="menu-pop">
+          <button type="button" id="mAddFolder">폴더째 추가</button>
+          <hr>
+          <button type="button" id="mResetVerdicts">판정·사유 모두 초기화</button>
+          <button type="button" id="mClearAll" class="danger">이미지 전체 삭제</button>
+        </div>
+      </details>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    <input type="file" id="folderInput" webkitdirectory multiple hidden>
+  </header>
+
+  <aside class="library" aria-label="등록된 이미지">
+    <div class="filters" id="filters">
+      <button type="button" data-filter="all"><b id="fAll">0</b>전체</button>
+      <button type="button" data-filter="pending"><b id="fPend">0</b>미검수</button>
+      <button type="button" data-filter="pass"><b id="fPass">0</b>통과</button>
+      <button type="button" data-filter="fail"><b id="fFail">0</b>불통과</button>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="lib-foot" id="libFoot">끌어다 놓기, 폴더째 추가, Ctrl+V 붙여넣기로도 이미지를 넣을 수 있습니다. 이 브라우저에 자동 저장됩니다.</div>
+  </aside>
+
+  <main class="stage noimg" id="stage" data-bg="grey">
+    <div id="frame"></div>
+    <img id="mainImg" alt="" draggable="false">
+    <div class="pins" id="pinLayer"></div>
+
+    <div class="hud hud-top" id="hud">
+      <div class="hud-group">
+        <button class="hb" type="button" data-zoom="out" title="축소 (−)" aria-label="축소">−</button>
+        <button class="hb zoomval" type="button" id="zoomVal" data-zoom="fit" title="화면에 맞춤 (0)">100%</button>
+        <button class="hb" type="button" data-zoom="in" title="확대 (+)" aria-label="확대">+</button>
+      </div>
+      <div class="hud-group">
+        <button class="hb" type="button" data-zoom="fit" title="화면에 맞춤 (0)">맞춤</button>
+        <button class="hb" type="button" data-zoom="1" title="원본 크기 (1)">100%</button>
+        <button class="hb" type="button" data-zoom="2" title="200% (2)">2×</button>
+        <button class="hb" type="button" data-zoom="4" title="400% (3)">4×</button>
+      </div>
+      <div class="hud-group" role="group" aria-label="배경">
+        <button class="sw" type="button" data-bg="grey" title="회색 배경" aria-label="회색 배경"><i></i></button>
+        <button class="sw" type="button" data-bg="checker" title="체크 무늬 배경 (투명 영역 확인)" aria-label="체크 무늬 배경"><i></i></button>
+        <button class="sw" type="button" data-bg="black" title="검정 배경" aria-label="검정 배경"><i></i></button>
+        <button class="sw" type="button" data-bg="white" title="흰색 배경" aria-label="흰색 배경"><i></i></button>
+      </div>
+      <div class="hud-group">
+        <button class="hb pinbtn" type="button" id="hudPin" aria-pressed="false" title="문제 위치에 핀 찍기 (M)">핀 찍기</button>
+      </div>
+    </div>
+    <div class="pin-banner" id="pinBanner" hidden>핀 모드 · 문제 위치를 클릭하세요 · Esc로 종료</div>
+
+    <button class="stage-nav prev" type="button" id="stPrev" aria-label="이전 이미지" title="이전 (←)">‹</button>
+    <button class="stage-nav next" type="button" id="stNext" aria-label="다음 이미지" title="다음 (→)">›</button>
+
+    <div class="hud hud-status mono"><span id="stDims"></span><span id="stCursor" class="dim"></span></div>
+    <div class="nav" id="navBox" hidden title="클릭하거나 끌어서 보는 위치 이동"><img id="navImg" alt="" draggable="false"><div class="nav-rect" id="navRect"></div></div>
+
+    <div class="empty" id="empty" hidden>
+      <div class="empty-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+        <h2>검수할 이미지를 올려 주세요</h2>
+        <p>파일을 이 화면에 끌어다 놓거나, 폴더째 넣거나, 복사한 이미지를 Ctrl+V로 붙여넣으면 됩니다. 올린 이미지는 이 브라우저에 저장되어 다시 열어도 그대로 남아 있습니다.</p>
+        <div class="empty-btns">
+          <button class="btn primary" type="button" id="eAdd">이미지 선택</button>
+          <button class="btn" type="button" id="eFolder">폴더 선택</button>
+        </div>
+        <button class="linkbtn" type="button" id="eSample">예시 이미지 3장으로 먼저 둘러보기</button>
+      </div>
+    </div>
+  </main>
+
+  <section class="panel" aria-label="판정">
+    <div class="panel-empty" id="panelEmpty">이미지를 선택하면 여기에서 통과 여부를 판정합니다.</div>
+    <div class="panel-body" id="panelBody" hidden>
+      <div class="file-head">
+        <div class="file-idx mono" id="fIdx"></div>
+        <h2 id="fName"></h2>
+        <div class="file-meta mono" id="fMeta"></div>
+      </div>
+      <div class="verdict">
+        <button class="vbtn pass" type="button" id="vPass" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>통과 <kbd>P</kbd>
+        </button>
+        <button class="vbtn fail" type="button" id="vFail" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>불통과 <kbd>F</kbd>
+        </button>
+      </div>
+      <div class="verdict-sub">
+        <span class="state-pill" id="vState" data-s="pending">미검수</span>
+        <button class="linkbtn" type="button" id="vReset">미검수로 되돌리기</button>
+      </div>
+      <div class="field" id="catField" hidden>
+        <div class="label">문제 유형 <small>여러 개 선택 가능</small></div>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="note" id="noteLabel">메모 <small>선택</small></label>
+        <textarea id="note" rows="4"></textarea>
+        <div class="hint" id="noteHint" hidden></div>
+      </div>
+      <div class="field">
+        <div class="label row"><span>문제 위치 표시</span><button class="btn small" type="button" id="btnPinMode">핀 찍기 <kbd>M</kbd></button></div>
+        <ol class="pin-list" id="pinList"></ol>
+        <div class="hint" id="pinHint">핀 찍기를 켜고 이미지를 클릭하면 문제 위치가 원본 픽셀 좌표로 기록됩니다. AI가 어디를 고칠지 정확히 알 수 있습니다.</div>
+      </div>
+      <label class="check"><input type="checkbox" id="autoNext" checked> 통과로 판정하면 다음 이미지로 넘어가기</label>
+      <div class="panel-nav">
+        <button class="btn" type="button" id="pPrev">← 이전</button>
+        <button class="btn" type="button" id="pNextPending">다음 미검수</button>
+        <button class="btn" type="button" id="pNext">다음 →</button>
+      </div>
+    </div>
+    <details class="keys" id="keys">
+      <summary>단축키</summary>
+      <dl>
+        <dt>← →</dt><dd>이전 / 다음 이미지</dd>
+        <dt>P · F · U</dt><dd>통과 · 불통과 · 미검수</dd>
+        <dt>M · Esc</dt><dd>핀 찍기 켜기 · 끄기</dd>
+        <dt>휠 · 드래그</dt><dd>커서 위치 기준 확대·축소 · 이동</dd>
+        <dt>더블클릭</dt><dd>맞춤 ↔ 100% 전환</dd>
+        <dt>0 · 1 · 2 · 3</dt><dd>맞춤 · 100% · 200% · 400%</dd>
+        <dt>+ −</dt><dd>한 단계 확대 · 축소</dd>
+        <dt>B</dt><dd>배경 바꾸기</dd>
+      </dl>
+    </details>
+  </section>
+</div>
+
+<div class="drop-overlay" id="dropOverlay" hidden><span>여기에 놓으면 이미지가 추가됩니다</span></div>
+
+<dialog class="dlg wide" id="exportDlg" aria-labelledby="exTitle">
+  <div class="dlg-inner">
+    <div class="dlg-head">
+      <h3 id="exTitle">검수 결과 내보내기</h3>
+      <button class="btn icon ghost" type="button" data-close aria-label="닫기">×</button>
+    </div>
+    <div class="warn-box" id="exWarn" hidden></div>
+    <div class="ex-grid">
+      <div class="ex-opts">
+        <div class="label">형식</div>
+        <div class="seg">
+          <label><input type="radio" name="exFmt" value="md" checked><span>AI 전달용 텍스트</span></label>
+          <label><input type="radio" name="exFmt" value="json"><span>JSON</span></label>
+        </div>
+        <div class="label">범위</div>
+        <div class="seg">
+          <label><input type="radio" name="exScope" value="all" checked><span>전체</span></label>
+          <label><input type="radio" name="exScope" value="fail"><span>불통과만</span></label>
+        </div>
+        <label class="check"><input type="checkbox" id="exPreamble" checked> AI용 안내문 포함 (영문)</label>
+        <label class="label" for="exContext">검수 맥락 <small>선택 · 결과 맨 위에 붙습니다</small></label>
+        <textarea id="exContext" rows="6" placeholder="예) 모바일 RPG 캐릭터 일러스트 1차 시안. 2D 셀 셰이딩 스타일. 원본 프롬프트: ..."></textarea>
+        <div class="hint">AI 채팅창에 그대로 붙여넣으면 됩니다. 불통과 사유와 핀 좌표가 함께 전달됩니다.</div>
+      </div>
+      <textarea id="exText" readonly spellcheck="false" aria-label="내보낼 결과"></textarea>
+    </div>
+    <div class="dlg-foot">
+      <span class="hint" id="exStat"></span>
+      <button class="btn" type="button" id="exDownload">파일로 저장</button>
+      <button class="btn primary" type="button" id="exCopy">복사하기</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="dlg" id="confirmDlg" aria-labelledby="cfTitle">
+  <div class="dlg-inner">
+    <div class="dlg-head"><h3 id="cfTitle"></h3></div>
+    <p id="cfMsg"></p>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="cfCancel">취소</button>
+      <button class="btn primary" type="button" id="cfOk"></button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+'use strict';
+
+const $ = (s) => document.querySelector(s);
+const CATEGORIES = ['손·손가락', '얼굴·표정', '신체 비율·해부학', '글자·문양 깨짐', '디테일 뭉개짐', '노이즈·아티팩트',
+  '배경 문제', '투명 배경·외곽선', '색감·톤', '스타일 불일치', '구도·잘림', '프롬프트 불일치'];
+const STATUS_LABEL = { pending: '미검수', pass: '통과', fail: '불통과' };
+const BGS = ['grey', 'checker', 'black', 'white'];
+const PREAMBLE = 'This is a human QA review of AI-generated images. The reviewer wrote the notes in Korean. ' +
+  'Each FAIL item lists problem categories, the reason, and optional pins that mark exact problem locations. ' +
+  'Pin coordinates are source-image pixels measured from the top-left corner, followed by the same point as a percentage of width and height. ' +
+  'When you regenerate or edit a FAIL image, fix every listed reason and pinned location and keep everything else unchanged. ' +
+  'Treat PASS images as approved references for style and quality.';
+
+/* ---------- preferences (localStorage, optional) ---------- */
+const prefs = {
+  get(k, d) { try { const v = localStorage.getItem('ird.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('ird.' + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+};
+
+/* ---------- persistence (IndexedDB with in-memory fallback) ---------- */
+const store = (() => {
+  let db = null;
+  const mem = { meta: new Map(), files: new Map() };
+  function run(name, mode, fn) {
+    return new Promise((resolve, reject) => {
+      let t, req;
+      try { t = db.transaction(name, mode); req = fn(t.objectStore(name)); } catch (e) { reject(e); return; }
+      t.oncomplete = () => resolve(req ? req.result : undefined);
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error || new Error('aborted'));
+    });
+  }
+  return {
+    async open() {
+      try {
+        if (!('indexedDB' in window)) throw new Error('no idb');
+        db = await new Promise((resolve, reject) => {
+          const r = indexedDB.open('image-review-desk', 1);
+          r.onupgradeneeded = () => {
+            const d = r.result;
+            if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'id' });
+            if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', { keyPath: 'id' });
+          };
+          r.onsuccess = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+          r.onblocked = () => reject(new Error('blocked'));
+        });
+        return true;
+      } catch (e) { db = null; return false; }
+    },
+    get persistent() { return !!db; },
+    allMeta() { return db ? run('meta', 'readonly', (s) => s.getAll()) : Promise.resolve([...mem.meta.values()]); },
+    allFiles() { return db ? run('files', 'readonly', (s) => s.getAll()) : Promise.resolve([...mem.files.values()]); },
+    getFile(id) { return db ? run('files', 'readonly', (s) => s.get(id)) : Promise.resolve(mem.files.get(id)); },
+    putMeta(m) { if (!db) { mem.meta.set(m.id, m); return Promise.resolve(); } return run('meta', 'readwrite', (s) => s.put(m)); },
+    putFile(f) { if (!db) { mem.files.set(f.id, f); return Promise.resolve(); } return run('files', 'readwrite', (s) => s.put(f)); },
+    async remove(id) {
+      if (!db) { mem.meta.delete(id); mem.files.delete(id); return; }
+      await run('meta', 'readwrite', (s) => s.delete(id));
+      await run('files', 'readwrite', (s) => s.delete(id));
+    },
+    async clear() {
+      if (!db) { mem.meta.clear(); mem.files.clear(); return; }
+      await run('meta', 'readwrite', (s) => s.clear());
+      await run('files', 'readwrite', (s) => s.clear());
+    }
+  };
+})();
+
+/* ---------- state ---------- */
+let items = [];                 // metadata objects, kept in display order
+const thumbURL = new Map();     // id -> object URL of thumbnail
+let currentId = null;
+let filter = prefs.get('filter', 'all');
+let mainURL = null;
+let pinMode = false;
+let nextOrder = 0;
+let selectToken = 0;
+const view = { scale: 1, tx: 0, ty: 0, w: 0, h: 0, fit: 1, fitMode: true };
+let SW = 0, SH = 0;
+
+const stage = $('#stage'), img = $('#mainImg'), frame = $('#frame'), pinLayer = $('#pinLayer');
+const navBox = $('#navBox'), navImg = $('#navImg'), navRect = $('#navRect');
+const noteEl = $('#note');
+
+const byId = (id) => items.find((x) => x.id === id);
+const cur = () => (currentId ? byId(currentId) : null);
+const matches = (it) => filter === 'all' || it.status === filter;
+const visible = () => items.filter(matches);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' KB';
+  return (b / 1024 / 1024).toFixed(1) + ' MB';
+}
+function extOf(name, type) {
+  const m = /\.([a-z0-9]+)$/i.exec(name);
+  if (m) return m[1].toUpperCase();
+  return (type || '').replace('image/', '').toUpperCase() || 'IMG';
+}
+function stamp(d, compact) {
+  const p = (n) => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return compact ? `${date.replace(/-/g, '')}-${p(d.getHours())}${p(d.getMinutes())}` : `${date} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* ---------- toast ---------- */
+let toastTimer = 0;
+function toast(msg, ms = 2600) {
+  const t = $('#toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer);
+  if (ms) toastTimer = setTimeout(() => { t.hidden = true; }, ms);
+}
+
+/* ---------- saving ---------- */
+const saveTimers = new Map();
+function onStoreError(e) {
+  const quota = e && (e.name === 'QuotaExceededError' || /quota/i.test(String(e.message)));
+  toast(quota ? '브라우저 저장 공간이 부족합니다. 검수가 끝난 이미지를 지워 주세요.' : '저장하지 못했습니다. 페이지를 새로고침해 주세요.', 5000);
+}
+function saveMeta(it, delay = 0) {
+  clearTimeout(saveTimers.get(it.id));
+  const fn = () => { saveTimers.delete(it.id); store.putMeta(it).catch(onStoreError); };
+  if (delay) saveTimers.set(it.id, setTimeout(fn, delay)); else fn();
+}
+function flushSaves() {
+  for (const [id, t] of saveTimers) { clearTimeout(t); const it = byId(id); if (it) store.putMeta(it).catch(() => {}); }
+  saveTimers.clear();
+}
+window.addEventListener('pagehide', flushSaves);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSaves(); });
+
+/* ---------- import ---------- */
+function loadImageEl(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const el = new Image();
+    el.onload = () => resolve({ el, url });
+    el.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    el.src = url;
+  });
+}
+async function makeThumb(blob) {
+  const { el, url } = await loadImageEl(blob);
+  try {
+    const w = el.naturalWidth || 512, h = el.naturalHeight || 512;
+    const s = Math.min(1, 320 / Math.max(w, h));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(el, 0, 0, c.width, c.height);
+    const thumb = await new Promise((r) => c.toBlob((b) => r(b), 'image/webp', 0.86));
+    return { w, h, thumb: thumb || blob };
+  } finally { URL.revokeObjectURL(url); }
+}
+const isImageFile = (f) => (f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|webp|gif|bmp|avif|svg|tiff?)$/i.test(f.name);
+
+async function addFiles(fileList) {
+  const files = [...fileList].filter(isImageFile);
+  if (!files.length) { toast('이미지 파일만 추가할 수 있습니다.'); return []; }
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  let added = 0, skipped = 0, failed = 0;
+  const newIds = [];
+  for (const f of files) {
+    if (items.some((it) => it.name === f.name && it.size === f.size)) { skipped++; continue; }
+    if (files.length > 3) toast(`불러오는 중… ${added + skipped + failed + 1} / ${files.length}`, 0);
+    try {
+      const { w, h, thumb } = await makeThumb(f);
+      const it = { id: uid(), name: f.name, type: f.type, size: f.size, w, h, status: 'pending', note: '', cats: [], pins: [],
+        order: nextOrder++, addedAt: Date.now(), reviewedAt: null };
+      await store.putFile({ id: it.id, blob: f, thumb });
+      await store.putMeta(it);
+      items.push(it);
+      thumbURL.set(it.id, URL.createObjectURL(thumb));
+      newIds.push(it.id);
+      added++;
+    } catch (e) {
+      if (e && (e.name === 'QuotaExceededError')) { onStoreError(e); break; }
+      failed++;
+    }
+  }
+  renderLibrary(); updateSummary(); updateEmpty();
+  if (newIds.length && (!cur() || !matches(cur()))) {
+    if (!matches(byId(newIds[0]))) setFilter('all');
+    select(newIds[0]);
+  }
+  const parts = [`${added}장 추가`];
+  if (skipped) parts.push(`중복 ${skipped}장 건너뜀`);
+  if (failed) parts.push(`열 수 없는 파일 ${failed}장`);
+  toast(parts.join(' · '));
+  return newIds;
+}
+
+async function filesFromDrop(dt) {
+  const entries = [...(dt.items || [])].map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+  const plain = [...dt.files];
+  if (!entries.some((e) => e.isDirectory)) return plain;
+  const out = [];
+  async function walk(entry) {
+    if (entry.isFile) {
+      out.push(await new Promise((res, rej) => entry.file(res, rej)));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        for (const e of batch) await walk(e);
+      } while (batch.length);
+    }
+  }
+  for (const e of entries) { try { await walk(e); } catch (err) { /* skip unreadable */ } }
+  return out;
+}
+
+/* ---------- library ---------- */
+function setFilter(f) {
+  filter = f; prefs.set('filter', f);
+  document.querySelectorAll('#filters button').forEach((b) => b.classList.toggle('on', b.dataset.filter === f));
+  renderLibrary();
+}
+function buildThumb(it, n) {
+  const d = document.createElement('div');
+  d.className = 'thumb'; d.dataset.id = it.id;
+  const sel = document.createElement('button');
+  sel.type = 'button'; sel.className = 'tsel';
+  const tw = document.createElement('span'); tw.className = 'tw';
+  const im = document.createElement('img'); im.alt = ''; im.loading = 'lazy'; im.draggable = false; im.src = thumbURL.get(it.id) || '';
+  const badge = document.createElement('span'); badge.className = 'tbadge';
+  const pins = document.createElement('span'); pins.className = 'tpins';
+  tw.append(im, badge, pins);
+  const cap = document.createElement('span'); cap.className = 'tcap';
+  const num = document.createElement('span'); num.className = 'mono'; num.textContent = n;
+  const nm = document.createElement('span'); nm.className = 'tname'; nm.textContent = it.name;
+  cap.append(num, nm);
+  sel.append(tw, cap);
+  const del = document.createElement('button');
+  del.type = 'button'; del.className = 'tdel'; del.textContent = '×';
+  del.title = '삭제'; del.setAttribute('aria-label', it.name + ' 삭제');
+  d.append(sel, del);
+  paintThumb(d, it);
+  return d;
+}
+function paintThumb(d, it) {
+  d.dataset.status = it.status;
+  d.querySelector('.tbadge').textContent = it.status === 'pending' ? '' : STATUS_LABEL[it.status];
+  d.querySelector('.tpins').textContent = it.pins.length ? '핀 ' + it.pins.length : '';
+  d.querySelector('.tsel').title = `${it.name} · ${STATUS_LABEL[it.status]}`;
+  d.classList.toggle('sel', it.id === currentId);
+}
+function renderLibrary() {
+  const wrap = $('#thumbs');
+  wrap.textContent = '';
+  const vis = visible();
+  if (!vis.length) {
+    const p = document.createElement('p'); p.className = 'lib-empty';
+    p.textContent = items.length ? '이 분류에 해당하는 이미지가 없습니다.' : '아직 등록된 이미지가 없습니다.';
+    wrap.appendChild(p);
+  } else {
+    const pos = new Map(items.map((it, i) => [it.id, i + 1]));
+    const frag = document.createDocumentFragment();
+    vis.forEach((it) => frag.appendChild(buildThumb(it, pos.get(it.id))));
+    wrap.appendChild(frag);
+  }
+  document.querySelectorAll('#filters button').forEach((b) => b.classList.toggle('on', b.dataset.filter === filter));
+}
+function thumbNode(id) { return $('#thumbs').querySelector(`.thumb[data-id="${CSS.escape(id)}"]`); }
+function refreshThumb(it) {
+  if (!matches(it)) { renderLibrary(); return; }
+  const d = thumbNode(it.id);
+  if (d) paintThumb(d, it); else renderLibrary();
+}
+function markSelected() {
+  $('#thumbs').querySelectorAll('.thumb').forEach((d) => d.classList.toggle('sel', d.dataset.id === currentId));
+  const d = currentId && thumbNode(currentId);
+  if (d) d.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+$('#thumbs').addEventListener('click', (e) => {
+  const del = e.target.closest('.tdel');
+  const th = e.target.closest('.thumb');
+  if (!th) return;
+  if (del) {
+    if (del.classList.contains('arm')) { removeItem(th.dataset.id); return; }
+    del.classList.add('arm'); del.textContent = '삭제';
+    setTimeout(() => { if (del.isConnected) { del.classList.remove('arm'); del.textContent = '×'; } }, 2500);
+    return;
+  }
+  select(th.dataset.id);
+});
+$('#filters').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-filter]');
+  if (b) setFilter(b.dataset.filter);
+});
+
+async function removeItem(id) {
+  const vis = visible();
+  const idx = vis.findIndex((x) => x.id === id);
+  try { await store.remove(id); } catch (e) { onStoreError(e); return; }
+  items = items.filter((x) => x.id !== id);
+  const u = thumbURL.get(id); if (u) URL.revokeObjectURL(u); thumbURL.delete(id);
+  renderLibrary(); updateSummary(); updateEmpty();
+  if (currentId === id) {
+    const nv = visible();
+    const next = nv[Math.min(idx, nv.length - 1)] || items[0];
+    currentId = null;
+    select(next ? next.id : null);
+  } else {
+    renderPanel(); markSelected();
+  }
+  toast('이미지를 삭제했습니다.');
+}
+
+/* ---------- summary ---------- */
+function counts() {
+  let pass = 0, fail = 0, pending = 0;
+  for (const it of items) { if (it.status === 'pass') pass++; else if (it.status === 'fail') fail++; else pending++; }
+  return { total: items.length, pass, fail, pending };
+}
+function updateSummary() {
+  const c = counts();
+  $('#cntDone').textContent = `${c.pass + c.fail} / ${c.total} 검수`;
+  $('#cntPass').textContent = c.pass; $('#cntFail').textContent = c.fail; $('#cntPend').textContent = c.pending;
+  $('#barPass').style.width = c.total ? (c.pass / c.total * 100) + '%' : '0';
+  $('#barFail').style.width = c.total ? (c.fail / c.total * 100) + '%' : '0';
+  $('#fAll').textContent = c.total; $('#fPend').textContent = c.pending; $('#fPass').textContent = c.pass; $('#fFail').textContent = c.fail;
+  $('#btnExport').classList.toggle('ready', c.total > 0 && c.pending === 0);
+}
+function updateEmpty() {
+  $('#empty').hidden = items.length > 0;
+}
+
+/* ---------- selection ---------- */
+async function select(id) {
+  const it = id ? byId(id) : null;
+  const tok = ++selectToken;
+  if (!it) {
+    currentId = null;
+    stage.classList.add('noimg');
+    img.removeAttribute('src');
+    if (mainURL) { URL.revokeObjectURL(mainURL); mainURL = null; }
+    pinLayer.textContent = '';
+    $('#stDims').textContent = ''; $('#stCursor').textContent = '';
+    renderPanel(); markSelected();
+    return;
+  }
+  currentId = id; prefs.set('current', id);
+  stage.classList.remove('noimg');
+  view.w = it.w; view.h = it.h;
+  img.style.width = it.w + 'px'; img.style.height = it.h + 'px';
+  img.src = thumbURL.get(id) || '';
+  navImg.src = thumbURL.get(id) || '';
+  $('#stDims').textContent = `${it.w} × ${it.h}px`;
+  $('#stCursor').textContent = '';
+  markSelected(); renderPanel(); buildPins(); fitView();
+  let rec = null;
+  try { rec = await store.getFile(id); } catch (e) { /* fall through */ }
+  if (tok !== selectToken) return;
+  if (mainURL) { URL.revokeObjectURL(mainURL); mainURL = null; }
+  if (rec && rec.blob) { mainURL = URL.createObjectURL(rec.blob); img.src = mainURL; }
+  else toast('원본을 불러오지 못해 축소본으로 보여 드립니다.');
+}
+function go(dir) {
+  const list = visible();
+  if (!list.length) return;
+  const i = list.findIndex((x) => x.id === currentId);
+  if (i === -1) { select(list[0].id); return; }
+  const j = i + dir;
+  if (j < 0 || j >= list.length) { toast(dir > 0 ? '마지막 이미지입니다.' : '첫 이미지입니다.', 1500); return; }
+  select(list[j].id);
+}
+function goNextPending() {
+  const i = items.findIndex((x) => x.id === currentId);
+  const order = items.slice(i + 1).concat(items.slice(0, Math.max(i, 0)));
+  const next = order.find((x) => x.status === 'pending');
+  if (!next) { toast('남은 미검수 이미지가 없습니다.'); return; }
+  if (!matches(next)) setFilter('all');
+  select(next.id);
+}
+
+/* ---------- verdicts ---------- */
+function setStatus(st) {
+  const it = cur(); if (!it) return;
+  const before = visible();
+  const idx = before.findIndex((x) => x.id === it.id);
+  const wasPending = counts().pending;
+  it.status = st;
+  it.reviewedAt = st === 'pending' ? null : Date.now();
+  saveMeta(it);
+  renderPanel(); refreshThumb(it); updateSummary();
+  if (wasPending > 0 && counts().pending === 0 && items.length) toast('모든 이미지 검수를 마쳤습니다. 결과 내보내기를 눌러 주세요.', 4000);
+  if (st === 'pass' && $('#autoNext').checked) {
+    const next = before[idx + 1];
+    if (next) select(next.id);
+  }
+  if (st === 'fail') setTimeout(() => noteEl.focus(), 0);
+}
+$('#vPass').addEventListener('click', () => setStatus('pass'));
+$('#vFail').addEventListener('click', () => setStatus('fail'));
+$('#vReset').addEventListener('click', () => setStatus('pending'));
+
+function renderPanel() {
+  const it = cur();
+  $('#panelEmpty').hidden = !!it;
+  $('#panelBody').hidden = !it;
+  if (!it) return;
+  $('#fIdx').textContent = `${items.indexOf(it) + 1} / ${items.length}`;
+  $('#fName').textContent = it.name;
+  $('#fMeta').textContent = `${it.w} × ${it.h}px · ${extOf(it.name, it.type)} · ${fmtSize(it.size)}`;
+  $('#vPass').classList.toggle('on', it.status === 'pass'); $('#vPass').setAttribute('aria-pressed', it.status === 'pass');
+  $('#vFail').classList.toggle('on', it.status === 'fail'); $('#vFail').setAttribute('aria-pressed', it.status === 'fail');
+  const pill = $('#vState'); pill.dataset.s = it.status; pill.textContent = STATUS_LABEL[it.status];
+  $('#vReset').hidden = it.status === 'pending';
+  const fail = it.status === 'fail';
+  $('#catField').hidden = !fail;
+  if (fail) renderChips(it);
+  $('#noteLabel').innerHTML = fail ? '불통과 사유 <small>AI에게 그대로 전달됩니다</small>' : '메모 <small>선택</small>';
+  noteEl.placeholder = fail
+    ? '어디가 왜 문제인지 구체적으로 적어 주세요.\n예) 왼손 손가락이 6개. 방패 문양의 글자가 뭉개짐. 배경 오른쪽에 잘린 사람 형체.'
+    : '참고할 점이 있으면 적어 두세요. 결과에 함께 들어갑니다.';
+  if (noteEl.value !== it.note) noteEl.value = it.note;
+  updateNoteHint(it);
+  renderPinList(it);
+}
+function updateNoteHint(it) {
+  const h = $('#noteHint');
+  const missing = it.status === 'fail' && !it.note.trim() && !it.cats.length && !it.pins.some((p) => p.note.trim());
+  h.hidden = !missing;
+  h.className = 'hint warn';
+  h.textContent = '사유를 적거나 문제 유형을 골라야 AI가 무엇을 고칠지 알 수 있습니다.';
+}
+function renderChips(it) {
+  const box = $('#chips');
+  box.textContent = '';
+  CATEGORIES.forEach((c) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = c;
+    b.setAttribute('aria-pressed', it.cats.includes(c));
+    box.appendChild(b);
+  });
+}
+$('#chips').addEventListener('click', (e) => {
+  const b = e.target.closest('.chip'); const it = cur();
+  if (!b || !it) return;
+  const c = b.textContent;
+  it.cats = it.cats.includes(c) ? it.cats.filter((x) => x !== c) : CATEGORIES.filter((x) => x === c || it.cats.includes(x));
+  b.setAttribute('aria-pressed', it.cats.includes(c));
+  saveMeta(it); updateNoteHint(it);
+});
+noteEl.addEventListener('input', () => {
+  const it = cur(); if (!it) return;
+  it.note = noteEl.value;
+  saveMeta(it, 400); updateNoteHint(it);
+});
+
+/* ---------- pins ---------- */
+function buildPins() {
+  const it = cur();
+  pinLayer.textContent = '';
+  if (!it) return;
+  it.pins.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'pin'; b.textContent = i + 1; b.dataset.i = i;
+    b.title = p.note ? `${i + 1}. ${p.note}` : `핀 ${i + 1}`;
+    pinLayer.appendChild(b);
+  });
+  positionPins();
+}
+function positionPins() {
+  const it = cur(); if (!it) return;
+  const nodes = pinLayer.children;
+  it.pins.forEach((p, i) => {
+    const n = nodes[i]; if (!n) return;
+    n.style.left = (view.tx + (p.x + 0.5) * view.scale) + 'px';
+    n.style.top = (view.ty + (p.y + 0.5) * view.scale) + 'px';
+  });
+}
+function renderPinList(it) {
+  const ol = $('#pinList');
+  ol.textContent = '';
+  it.pins.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.dataset.i = i;
+    const no = document.createElement('button'); no.type = 'button'; no.className = 'pin-no'; no.textContent = i + 1; no.title = '이 위치로 이동';
+    const co = document.createElement('span'); co.className = 'coords mono'; co.textContent = `${p.x}, ${p.y}`;
+    const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'pin-note'; inp.value = p.note;
+    inp.placeholder = '이 위치의 문제'; inp.id = `pin-note-${i}`; inp.setAttribute('aria-label', `핀 ${i + 1} 설명`);
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'pin-del'; del.textContent = '×'; del.setAttribute('aria-label', `핀 ${i + 1} 삭제`);
+    li.append(no, co, inp, del);
+    ol.appendChild(li);
+  });
+  $('#pinHint').hidden = it.pins.length > 0;
+}
+function addPin(x, y) {
+  const it = cur(); if (!it) return;
+  it.pins.push({ x, y, note: '' });
+  if (it.status === 'pending') { it.status = 'fail'; it.reviewedAt = Date.now(); updateSummary(); }
+  saveMeta(it); buildPins(); renderPanel(); refreshThumb(it);
+  const inp = document.getElementById(`pin-note-${it.pins.length - 1}`);
+  if (inp) inp.focus({ preventScroll: true });
+}
+$('#pinList').addEventListener('input', (e) => {
+  const inp = e.target.closest('.pin-note'); const it = cur();
+  if (!inp || !it) return;
+  const i = +inp.closest('li').dataset.i;
+  it.pins[i].note = inp.value;
+  const n = pinLayer.children[i]; if (n) n.title = inp.value ? `${i + 1}. ${inp.value}` : `핀 ${i + 1}`;
+  saveMeta(it, 400); updateNoteHint(it);
+});
+$('#pinList').addEventListener('click', (e) => {
+  const it = cur(); if (!it) return;
+  const li = e.target.closest('li'); if (!li) return;
+  const i = +li.dataset.i;
+  if (e.target.closest('.pin-del')) {
+    it.pins.splice(i, 1);
+    saveMeta(it); buildPins(); renderPinList(it); refreshThumb(it); updateNoteHint(it);
+  } else if (e.target.closest('.pin-no')) {
+    focusPin(i);
+  }
+});
+function focusPin(i) {
+  const it = cur(); const p = it && it.pins[i]; if (!p) return;
+  const s = Math.max(view.scale, Math.min(4, view.fit * 2.5), 1);
+  centerOn(p.x + 0.5, p.y + 0.5, s);
+  const n = pinLayer.children[i];
+  if (n) { n.classList.remove('hl'); void n.offsetWidth; n.classList.add('hl'); }
+}
+pinLayer.addEventListener('pointerdown', (e) => { if (e.target.closest('.pin')) e.stopPropagation(); });
+pinLayer.addEventListener('click', (e) => {
+  const b = e.target.closest('.pin'); if (!b) return;
+  const inp = document.getElementById(`pin-note-${b.dataset.i}`);
+  if (inp) inp.focus();
+});
+function setPinMode(on) {
+  pinMode = on && !!cur();
+  stage.classList.toggle('pinmode', pinMode);
+  $('#hudPin').classList.toggle('on', pinMode); $('#hudPin').setAttribute('aria-pressed', pinMode);
+  $('#btnPinMode').classList.toggle('on', pinMode);
+  $('#pinBanner').hidden = !pinMode;
+}
+$('#hudPin').addEventListener('click', () => setPinMode(!pinMode));
+$('#btnPinMode').addEventListener('click', () => setPinMode(!pinMode));
+
+/* ---------- viewer: zoom & pan ---------- */
+function computeFit() {
+  if (!view.w || !view.h || !SW || !SH) return 1;
+  const pad = Math.min(28, SW * 0.04);
+  const f = Math.min((SW - pad * 2) / view.w, (SH - pad * 2) / view.h);
+  return f > 0 && isFinite(f) ? f : 1;
+}
+function fitView() {
+  view.fit = computeFit();
+  view.scale = view.fit;
+  view.tx = (SW - view.w * view.scale) / 2;
+  view.ty = (SH - view.h * view.scale) / 2;
+  view.fitMode = true;
+  applyView();
+}
+function zoomTo(s, cx, cy) {
+  if (!cur()) return;
+  s = clamp(s, 0.02, 64);
+  if (cx == null) { cx = SW / 2; cy = SH / 2; }
+  const k = s / view.scale;
+  view.tx = cx - (cx - view.tx) * k;
+  view.ty = cy - (cy - view.ty) * k;
+  view.scale = s;
+  view.fitMode = false;
+  applyView();
+}
+function centerOn(x, y, s = view.scale) {
+  view.scale = clamp(s, 0.02, 64);
+  view.tx = SW / 2 - x * view.scale;
+  view.ty = SH / 2 - y * view.scale;
+  view.fitMode = false;
+  applyView();
+}
+function fmtZoom(s) {
+  const p = s * 100;
+  return (p >= 10 ? Math.round(p) : p.toFixed(1)) + '%';
+}
+function applyView() {
+  if (!cur()) return;
+  const dpr = window.devicePixelRatio || 1;
+  const tx = Math.round(view.tx * dpr) / dpr, ty = Math.round(view.ty * dpr) / dpr;
+  img.style.transform = `translate(${tx}px, ${ty}px) scale(${view.scale})`;
+  img.classList.toggle('pixel', view.scale * dpr >= 3);
+  frame.style.left = tx + 'px'; frame.style.top = ty + 'px';
+  frame.style.width = view.w * view.scale + 'px'; frame.style.height = view.h * view.scale + 'px';
+  $('#zoomVal').textContent = fmtZoom(view.scale);
+  document.querySelectorAll('#hud [data-zoom]').forEach((b) => {
+    const z = b.dataset.zoom;
+    const on = (z === 'fit' && view.fitMode && b.id !== 'zoomVal') || (/^\d+$/.test(z) && Math.abs(view.scale - +z) < 1e-6);
+    b.classList.toggle('on', on);
+  });
+  positionPins();
+  renderNav();
+}
+function renderNav() {
+  const overflow = view.w * view.scale > SW + 1 || view.h * view.scale > SH + 1;
+  navBox.hidden = !overflow || !cur();
+  if (navBox.hidden) return;
+  const max = SW < 500 ? 96 : 140;
+  const ns = Math.min(max / view.w, max / view.h);
+  const nw = view.w * ns, nh = view.h * ns;
+  navBox.style.width = nw + 'px'; navBox.style.height = nh + 'px';
+  navImg.style.width = nw + 'px'; navImg.style.height = nh + 'px';
+  const x0 = clamp(-view.tx / view.scale, 0, view.w), y0 = clamp(-view.ty / view.scale, 0, view.h);
+  const x1 = clamp((SW - view.tx) / view.scale, 0, view.w), y1 = clamp((SH - view.ty) / view.scale, 0, view.h);
+  navRect.style.left = x0 * ns + 'px'; navRect.style.top = y0 * ns + 'px';
+  navRect.style.width = Math.max(2, (x1 - x0) * ns) + 'px'; navRect.style.height = Math.max(2, (y1 - y0) * ns) + 'px';
+}
+function navMove(e) {
+  const r = navBox.getBoundingClientRect();
+  const ns = r.width / view.w;
+  centerOn((e.clientX - r.left) / ns, (e.clientY - r.top) / ns);
+}
+navBox.addEventListener('pointerdown', (e) => {
+  e.stopPropagation(); e.preventDefault();
+  navBox.setPointerCapture(e.pointerId); navMove(e);
+  const mv = (ev) => navMove(ev);
+  const up = () => { navBox.removeEventListener('pointermove', mv); navBox.removeEventListener('pointerup', up); navBox.removeEventListener('pointercancel', up); };
+  navBox.addEventListener('pointermove', mv); navBox.addEventListener('pointerup', up); navBox.addEventListener('pointercancel', up);
+});
+
+new ResizeObserver(() => {
+  const r = stage.getBoundingClientRect();
+  const oldW = SW, oldH = SH;
+  SW = r.width; SH = r.height;
+  if (!cur()) return;
+  if (view.fitMode) fitView();
+  else { view.tx += (SW - oldW) / 2; view.ty += (SH - oldH) / 2; applyView(); }
+}).observe(stage);
+
+stage.addEventListener('wheel', (e) => {
+  if (!cur()) return;
+  e.preventDefault();
+  const r = stage.getBoundingClientRect();
+  let dy = e.deltaY;
+  if (e.deltaMode === 1) dy *= 16; else if (e.deltaMode === 2) dy *= SH;
+  const k = e.ctrlKey ? 0.01 : 0.0018;
+  zoomTo(view.scale * Math.exp(-dy * k), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+
+const pointers = new Map();
+let drag = null, pinch = null;
+function local(e) { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function toImage(pt) { return { x: (pt.x - view.tx) / view.scale, y: (pt.y - view.ty) / view.scale }; }
+function startDrag(pt) { drag = { x: pt.x, y: pt.y, tx: view.tx, ty: view.ty, moved: false }; }
+
+stage.addEventListener('pointerdown', (e) => {
+  if (!cur() || e.button > 0) return;
+  if (e.target.closest('.hud, .stage-nav, .nav, .pin, .empty')) return;
+  stage.setPointerCapture(e.pointerId);
+  const pt = local(e);
+  pointers.set(e.pointerId, pt);
+  if (pointers.size === 1) { startDrag(pt); pinch = null; }
+  else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, scale: view.scale, tx: view.tx, ty: view.ty };
+    drag = null;
+  }
+});
+stage.addEventListener('pointermove', (e) => {
+  const pt = local(e);
+  if (cur()) {
+    const ip = toImage(pt);
+    $('#stCursor').textContent = ip.x >= 0 && ip.y >= 0 && ip.x < view.w && ip.y < view.h ? `x ${Math.floor(ip.x)}, y ${Math.floor(ip.y)}` : '';
+  }
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, pt);
+  if (pinch && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const s = clamp(pinch.scale * d / pinch.d, 0.02, 64);
+    const k = s / pinch.scale;
+    view.tx = mid.x - (pinch.mid.x - pinch.tx) * k;
+    view.ty = mid.y - (pinch.mid.y - pinch.ty) * k;
+    view.scale = s; view.fitMode = false;
+    applyView();
+  } else if (drag) {
+    const dx = pt.x - drag.x, dy = pt.y - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; stage.classList.add('panning'); }
+    if (drag.moved) { view.tx = drag.tx + dx; view.ty = drag.ty + dy; view.fitMode = false; applyView(); }
+  }
+});
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  const pt = pointers.get(e.pointerId);
+  pointers.delete(e.pointerId);
+  if (e.type === 'pointerup' && drag && !drag.moved && !pinch && pinMode) {
+    const ip = toImage(pt);
+    if (ip.x >= 0 && ip.y >= 0 && ip.x < view.w && ip.y < view.h) addPin(Math.floor(ip.x), Math.floor(ip.y));
+    else toast('이미지 안쪽을 클릭해 주세요.', 1500);
+  }
+  if (pointers.size === 1) { startDrag([...pointers.values()][0]); drag.moved = true; pinch = null; }
+  else if (pointers.size === 0) { drag = null; pinch = null; stage.classList.remove('panning'); }
+}
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', endPointer);
+stage.addEventListener('pointerleave', () => { if (!pointers.size) $('#stCursor').textContent = ''; });
+stage.addEventListener('dblclick', (e) => {
+  if (!cur() || pinMode || e.target.closest('.hud, .stage-nav, .nav, .pin, .empty')) return;
+  const pt = local(e);
+  if (view.fitMode) zoomTo(view.fit < 1 ? 1 : Math.min(64, view.fit * 2), pt.x, pt.y);
+  else fitView();
+});
+
+$('#hud').addEventListener('click', (e) => {
+  const z = e.target.closest('[data-zoom]');
+  if (z) {
+    const v = z.dataset.zoom;
+    if (v === 'fit') fitView();
+    else if (v === 'in') zoomTo(view.scale * 1.25);
+    else if (v === 'out') zoomTo(view.scale / 1.25);
+    else zoomTo(+v);
+    return;
+  }
+  const sw = e.target.closest('.sw');
+  if (sw) setBg(sw.dataset.bg);
+});
+function setBg(bg) {
+  stage.dataset.bg = bg; prefs.set('bg', bg);
+  document.querySelectorAll('#hud .sw').forEach((b) => b.classList.toggle('on', b.dataset.bg === bg));
+}
+$('#stPrev').addEventListener('click', () => go(-1));
+$('#stNext').addEventListener('click', () => go(1));
+$('#pPrev').addEventListener('click', () => go(-1));
+$('#pNext').addEventListener('click', () => go(1));
+$('#pNextPending').addEventListener('click', goNextPending);
+$('#autoNext').checked = prefs.get('autoNext', true);
+$('#autoNext').addEventListener('change', (e) => prefs.set('autoNext', e.target.checked));
+
+/* ---------- adding files ---------- */
+const fileInput = $('#fileInput'), folderInput = $('#folderInput');
+function closeMenu() { $('#menu').open = false; }
+$('#btnAdd').addEventListener('click', () => fileInput.click());
+$('#eAdd').addEventListener('click', () => fileInput.click());
+$('#eFolder').addEventListener('click', () => folderInput.click());
+$('#mAddFolder').addEventListener('click', () => { closeMenu(); folderInput.click(); });
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+folderInput.addEventListener('change', () => { addFiles(folderInput.files); folderInput.value = ''; });
+document.addEventListener('click', (e) => { if (!e.target.closest('#menu')) closeMenu(); });
+
+let dragDepth = 0;
+const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; $('#dropOverlay').hidden = false; });
+window.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+window.addEventListener('dragleave', (e) => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#dropOverlay').hidden = true; });
+window.addEventListener('drop', async (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; $('#dropOverlay').hidden = true;
+  addFiles(await filesFromDrop(e.dataTransfer));
+});
+document.addEventListener('paste', (e) => {
+  const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter(isImageFile);
+  if (!files.length) return;
+  e.preventDefault();
+  const t = stamp(new Date(), true);
+  addFiles(files.map((f, i) => {
+    const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+    return new File([f], `붙여넣기_${t}_${i + 1}.${ext}`, { type: f.type });
+  }));
+});
+
+/* ---------- confirm ---------- */
+function ask(title, msg, okLabel) {
+  const d = $('#confirmDlg');
+  $('#cfTitle').textContent = title; $('#cfMsg').textContent = msg; $('#cfOk').textContent = okLabel;
+  return new Promise((resolve) => {
+    const done = (v) => { d.close(); $('#cfOk').onclick = $('#cfCancel').onclick = null; d.oncancel = null; resolve(v); };
+    $('#cfOk').onclick = () => done(true);
+    $('#cfCancel').onclick = () => done(false);
+    d.oncancel = (ev) => { ev.preventDefault(); done(false); };
+    d.showModal();
+  });
+}
+$('#mResetVerdicts').addEventListener('click', async () => {
+  closeMenu();
+  if (!items.length) return;
+  if (!(await ask('판정을 모두 초기화할까요?', `이미지 ${items.length}장의 판정, 사유, 문제 유형, 핀을 모두 지웁니다. 이미지는 그대로 남습니다.`, '초기화'))) return;
+  for (const it of items) { it.status = 'pending'; it.note = ''; it.cats = []; it.pins = []; it.reviewedAt = null; saveMeta(it); }
+  renderLibrary(); updateSummary(); renderPanel(); buildPins();
+  toast('판정을 모두 초기화했습니다.');
+});
+$('#mClearAll').addEventListener('click', async () => {
+  closeMenu();
+  if (!items.length) return;
+  if (!(await ask('이미지를 모두 삭제할까요?', `등록된 이미지 ${items.length}장과 검수 내용이 이 브라우저에서 지워집니다. 필요하면 먼저 결과를 내보내 주세요.`, '전체 삭제'))) return;
+  try { await store.clear(); } catch (e) { onStoreError(e); return; }
+  for (const u of thumbURL.values()) URL.revokeObjectURL(u);
+  thumbURL.clear(); items = []; nextOrder = 0;
+  setPinMode(false);
+  select(null); renderLibrary(); updateSummary(); updateEmpty();
+  toast('모든 이미지를 삭제했습니다.');
+});
+
+/* ---------- export ---------- */
+const exDlg = $('#exportDlg');
+function exOpts() {
+  return {
+    fmt: document.querySelector('input[name="exFmt"]:checked').value,
+    scope: document.querySelector('input[name="exScope"]:checked').value,
+    preamble: $('#exPreamble').checked,
+    context: $('#exContext').value.trim()
+  };
+}
+const pct = (v, total) => Math.round((v + 0.5) / total * 1000) / 10;
+function indent(text, pad) { return text.split('\n').map((l, i) => (i ? pad + l : l)).join('\n'); }
+function buildReport() {
+  const o = exOpts();
+  const c = counts();
+  const pos = new Map(items.map((it, i) => [it.id, i + 1]));
+  const now = new Date();
+  const chosen = o.scope === 'fail' ? items.filter((it) => it.status === 'fail') : items;
+  if (o.fmt === 'json') {
+    const data = {
+      report: 'image-review',
+      reviewedAt: now.toISOString(),
+      instructions: o.preamble ? PREAMBLE : undefined,
+      context: o.context || undefined,
+      coordinateSystem: 'Pin x/y are source-image pixels from the top-left corner. xPct/yPct give the same point as a percentage of width/height.',
+      summary: { total: c.total, pass: c.pass, fail: c.fail, pending: c.pending },
+      scope: o.scope === 'fail' ? 'fail-only' : 'all',
+      items: chosen.map((it) => ({
+        index: pos.get(it.id), file: it.name, width: it.w, height: it.h, status: it.status,
+        categories: it.cats, note: it.note.trim(),
+        pins: it.pins.map((p, j) => ({ id: j + 1, x: p.x, y: p.y, xPct: pct(p.x, it.w), yPct: pct(p.y, it.h), note: p.note.trim() }))
+      }))
+    };
+    return JSON.stringify(data, null, 2);
+  }
+  const L = [];
+  L.push('# Image Review Results', '');
+  L.push(`- Reviewed: ${stamp(now)}`);
+  L.push(`- Total: ${c.total} | PASS: ${c.pass} | FAIL: ${c.fail} | PENDING: ${c.pending}`);
+  L.push(`- Scope: ${o.scope === 'fail' ? 'FAIL items only' : 'all images'}`);
+  L.push('- Numbers in [brackets] are each image\'s position in the review list.');
+  if (o.preamble) L.push('', '## Instructions for the AI', PREAMBLE);
+  if (o.context) L.push('', '## Context from the reviewer', o.context);
+  const groups = o.scope === 'fail' ? ['fail'] : ['fail', 'pass', 'pending'];
+  const title = { fail: 'FAIL', pass: 'PASS', pending: 'PENDING (not reviewed yet)' };
+  for (const g of groups) {
+    const list = chosen.filter((it) => it.status === g);
+    if (!list.length) continue;
+    L.push('', `## ${title[g]} (${list.length})`);
+    for (const it of list) {
+      const head = `[${pos.get(it.id)}] \`${it.name}\` (${it.w}×${it.h})`;
+      const note = it.note.trim();
+      if (g === 'fail') {
+        L.push('', `### ${head}`);
+        if (it.cats.length) L.push(`- Categories: ${it.cats.join(', ')}`);
+        L.push(`- Reason: ${note ? indent(note, '  ') : '(not written)'}`);
+        if (it.pins.length) {
+          L.push('- Pins (x, y px · % of width, height):');
+          it.pins.forEach((p, j) => {
+            L.push(`  ${j + 1}. (${p.x}, ${p.y}) · ${pct(p.x, it.w)}%, ${pct(p.y, it.h)}%${p.note.trim() ? ' — ' + p.note.trim() : ''}`);
+          });
+        }
+      } else {
+        const extra = [];
+        if (note) extra.push('Note: ' + note.replace(/\s*\n\s*/g, ' / '));
+        if (it.pins.length) extra.push('Pins: ' + it.pins.map((p, j) => `${j + 1}. (${p.x}, ${p.y})${p.note.trim() ? ' ' + p.note.trim() : ''}`).join('; '));
+        L.push(`- ${head}${extra.length ? ' — ' + extra.join(' | ') : ''}`);
+      }
+    }
+  }
+  if (!chosen.length) L.push('', o.scope === 'fail' ? '(No FAIL items.)' : '(No images.)');
+  return L.join('\n') + '\n';
+}
+function refreshExport() {
+  const text = buildReport();
+  $('#exText').value = text;
+  const c = counts();
+  const failNoReason = items.filter((it) => it.status === 'fail' && !it.note.trim() && !it.cats.length && !it.pins.some((p) => p.note.trim())).length;
+  const warns = [];
+  if (c.pending) warns.push(`아직 검수하지 않은 이미지가 ${c.pending}장 있습니다.`);
+  if (failNoReason) warns.push(`불통과 ${failNoReason}장에 사유가 없습니다. AI가 무엇을 고칠지 모를 수 있습니다.`);
+  $('#exWarn').hidden = !warns.length;
+  $('#exWarn').textContent = warns.join(' ');
+  $('#exStat').textContent = `${text.length.toLocaleString()}자 · 통과 ${c.pass} · 불통과 ${c.fail} · 미검수 ${c.pending}`;
+}
+$('#btnExport').addEventListener('click', () => {
+  if (!items.length) { toast('먼저 이미지를 추가해 주세요.'); return; }
+  flushSaves();
+  $('#exContext').value = prefs.get('context', '');
+  const f = prefs.get('exFmt', 'md'); const s = prefs.get('exScope', 'all');
+  const fr = document.querySelector(`input[name="exFmt"][value="${f}"]`); if (fr) fr.checked = true;
+  const sr = document.querySelector(`input[name="exScope"][value="${s}"]`); if (sr) sr.checked = true;
+  $('#exPreamble').checked = prefs.get('exPreamble', true);
+  refreshExport();
+  exDlg.showModal();
+});
+exDlg.addEventListener('change', (e) => {
+  if (e.target.name === 'exFmt') prefs.set('exFmt', e.target.value);
+  if (e.target.name === 'exScope') prefs.set('exScope', e.target.value);
+  if (e.target.id === 'exPreamble') prefs.set('exPreamble', e.target.checked);
+  refreshExport();
+});
+$('#exContext').addEventListener('input', (e) => { prefs.set('context', e.target.value); refreshExport(); });
+exDlg.querySelector('[data-close]').addEventListener('click', () => exDlg.close());
+exDlg.addEventListener('click', (e) => { if (e.target === exDlg) exDlg.close(); });
+$('#exCopy').addEventListener('click', () => {
+  const ta = $('#exText');
+  const text = ta.value;
+  const fallback = () => {
+    ta.focus(); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    toast(ok ? '복사했습니다. AI 채팅창에 붙여넣으세요.' : '텍스트를 선택해 두었습니다. Ctrl+C로 복사해 주세요.', 3500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast('복사했습니다. AI 채팅창에 붙여넣으세요.', 3000), fallback);
+  } else fallback();
+});
+$('#exDownload').addEventListener('click', () => {
+  const o = exOpts();
+  const blob = new Blob([$('#exText').value], { type: o.fmt === 'json' ? 'application/json' : 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `image-review_${stamp(new Date(), true)}.${o.fmt === 'json' ? 'json' : 'md'}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+
+/* ---------- keyboard ---------- */
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t.matches && t.matches('input[type="text"], textarea, [contenteditable="true"]');
+  if (e.key === 'Escape') {
+    if (exDlg.open || $('#confirmDlg').open) return;
+    if (typing) { t.blur(); return; }
+    if (pinMode) { setPinMode(false); return; }
+    closeMenu();
+    return;
+  }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey || exDlg.open || $('#confirmDlg').open) return;
+  if (!cur()) return;
+  const code = e.code;
+  let handled = true;
+  if (e.key === 'ArrowRight') go(1);
+  else if (e.key === 'ArrowLeft') go(-1);
+  else if (code === 'KeyP') setStatus('pass');
+  else if (code === 'KeyF' || code === 'KeyX') setStatus('fail');
+  else if (code === 'KeyU') setStatus('pending');
+  else if (code === 'KeyM') setPinMode(!pinMode);
+  else if (code === 'KeyB') setBg(BGS[(BGS.indexOf(stage.dataset.bg) + 1) % BGS.length]);
+  else if (code === 'Digit0' || code === 'Numpad0') fitView();
+  else if (code === 'Digit1' || code === 'Numpad1') zoomTo(1);
+  else if (code === 'Digit2' || code === 'Numpad2') zoomTo(2);
+  else if (code === 'Digit3' || code === 'Numpad3') zoomTo(4);
+  else if (e.key === '+' || e.key === '=' || code === 'NumpadAdd') zoomTo(view.scale * 1.25);
+  else if (e.key === '-' || e.key === '_' || code === 'NumpadSubtract') zoomTo(view.scale / 1.25);
+  else handled = false;
+  if (handled) e.preventDefault();
+});
+
+/* ---------- sample images ---------- */
+function sampleBlob(i) {
+  return new Promise((resolve) => {
+    const W = 1024, H = 768;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    const hue = [205, 28, 160][i];
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, `hsl(${hue} 65% 70%)`); sky.addColorStop(1, `hsl(${hue + 30} 55% 92%)`);
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    g.fillStyle = `hsl(${hue + 170} 90% 72%)`;
+    g.beginPath(); g.arc(W * 0.76, H * 0.26, 84, 0, Math.PI * 2); g.fill();
+    for (let k = 0; k < 3; k++) {
+      g.fillStyle = `hsl(${hue + 100} ${38 + k * 10}% ${48 - k * 11}%)`;
+      g.beginPath(); g.moveTo(0, H);
+      for (let x = 0; x <= W; x += 12) g.lineTo(x, H * (0.56 + k * 0.12) + Math.sin(x / (80 + k * 34) + i * 2 + k) * 26);
+      g.lineTo(W, H); g.closePath(); g.fill();
+    }
+    // signboard with text: the second sample has a deliberately broken word
+    g.fillStyle = '#5b3a1e'; g.fillRect(286, 430, 14, 150); g.fillRect(470, 430, 14, 150);
+    g.fillStyle = '#f6efe2'; g.fillRect(250, 360, 270, 96);
+    g.strokeStyle = '#5b3a1e'; g.lineWidth = 6; g.strokeRect(250, 360, 270, 96);
+    g.fillStyle = '#2b2b2b'; g.font = '700 54px sans-serif'; g.textAlign = 'center';
+    g.fillText(i === 1 ? 'CAF∃Ǝ' : 'CAFE', 385, 428);
+    g.textAlign = 'left';
+    g.fillStyle = 'rgba(0,0,0,0.6)'; g.font = '700 26px sans-serif';
+    g.fillText(`예시 이미지 ${i + 1} · 체험용`, 28, 50);
+    g.font = '11px monospace';
+    g.fillText('확대해야 보이는 작은 글자입니다. 디테일 검수를 연습해 보세요.', 28, H - 22);
+    c.toBlob((b) => resolve(b), 'image/png');
+  });
+}
+$('#eSample').addEventListener('click', async () => {
+  const names = ['예시_카페간판_01.png', '예시_카페간판_02.png', '예시_카페간판_03.png'];
+  const files = [];
+  for (let i = 0; i < 3; i++) files.push(new File([await sampleBlob(i)], names[i], { type: 'image/png' }));
+  const ids = await addFiles(files);
+  const [a, b] = ids.map(byId);
+  if (a) { a.status = 'pass'; a.reviewedAt = Date.now(); saveMeta(a); }
+  if (b) {
+    b.status = 'fail'; b.reviewedAt = Date.now();
+    b.cats = ['글자·문양 깨짐'];
+    b.note = '(예시) 간판 글자가 CAFE가 아니라 뒤집힌 문자로 깨져 있음. 나머지 구도와 색감은 유지.';
+    b.pins = [{ x: 470, y: 412, note: '(예시) E 자리에 뒤집힌 문자' }];
+    saveMeta(b);
+  }
+  renderLibrary(); updateSummary();
+  if (b) select(b.id);
+});
+
+/* ---------- init ---------- */
+async function init() {
+  setBg(BGS.includes(prefs.get('bg', 'grey')) ? prefs.get('bg', 'grey') : 'grey');
+  const persistent = await store.open();
+  if (!persistent) {
+    const f = $('#libFoot');
+    f.classList.add('warn');
+    f.textContent = '이 브라우저에서는 저장소를 쓸 수 없어 새로고침하면 이미지가 사라집니다. 검수를 마치면 바로 결과를 내보내 주세요.';
+  } else {
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
+  }
+  try {
+    const metas = await store.allMeta();
+    const files = await store.allFiles();
+    const fileMap = new Map(files.map((f) => [f.id, f]));
+    items = metas.filter((m) => fileMap.has(m.id)).sort((a, b) => a.order - b.order).map((m) => ({
+      ...m, note: m.note || '', cats: m.cats || [], pins: m.pins || [], status: STATUS_LABEL[m.status] ? m.status : 'pending'
+    }));
+    for (const it of items) {
+      const f = fileMap.get(it.id);
+      thumbURL.set(it.id, URL.createObjectURL(f.thumb || f.blob));
+    }
+    nextOrder = items.length ? items[items.length - 1].order + 1 : 0;
+  } catch (e) {
+    items = [];
+    toast('저장된 이미지를 불러오지 못했습니다.', 4000);
+  }
+  if (!['all', 'pending', 'pass', 'fail'].includes(filter)) filter = 'all';
+  renderLibrary(); updateSummary(); updateEmpty();
+  const last = prefs.get('current', null);
+  const first = (last && byId(last)) || visible()[0] || items[0];
+  select(first ? first.id : null);
+}
+init();
+})();
+</script>
+</body>
+</html>
